@@ -2,6 +2,7 @@ import json
 from PyQt5.QtWidgets import (QMainWindow, QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QTextEdit, QCheckBox)
 from logic.distanceLogic import calculate_distance, calculate_azimuth
 from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation
+from mapwindow import MapWindow
 
 
 class MainWindow(QMainWindow):
@@ -49,6 +50,7 @@ class MainWindow(QMainWindow):
         self.calculate_button.clicked.connect(self.calculate_solution)
 
         self.map_button = QPushButton("Map")
+        self.map_button.clicked.connect(self.open_map_window)
 
         self.solutions_label = QLabel("Solutions:")
         self.solutions_text = QTextEdit()
@@ -102,6 +104,10 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(container)
 
         self.update_shells()
+
+    def open_map_window(self):
+        self.map_window = MapWindow()
+        self.map_window.show()
 
     def load_json(self, filepath):
         try:
