@@ -1,5 +1,6 @@
 import json
-from PyQt5.QtWidgets import (QMainWindow, QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QTextEdit, QCheckBox)
+from PyQt5.QtWidgets import (QMainWindow, QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout,
+                             QTextEdit, QCheckBox, QMessageBox)
 from logic.distanceLogic import calculate_distance, calculate_azimuth
 from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation
 from mapwindow import MapWindow
@@ -106,8 +107,43 @@ class MainWindow(QMainWindow):
         self.update_shells()
 
     def open_map_window(self):
-        self.map_window = MapWindow()
-        self.map_window.show()
+        """Открытие окна карты и установка связи с координатами."""
+        try:
+            self.map_window = MapWindow()
+            # В методе open_map_window замените строку:
+            self.map_window.coordinates_selected.connect(self.update_coordinates_from_map)
+            self.map_window.show()
+        except Exception as e:
+            self.show_error(f"Error opening map window: {e}")
+
+    def update_coordinates_from_map(self, artillery_coords, target_coords):
+        """Обновляет координаты артиллерии и цели из карты."""
+        try:
+            if isinstance(artillery_coords, tuple) and isinstance(target_coords, tuple):
+                # Артиллерия
+                self.artillery_x.setText(f"{artillery_coords[0]:.2f}")
+                self.artillery_y.setText(f"{artillery_coords[1]:.2f}")
+
+                # Цель
+                self.target_x.setText(f"{target_coords[0]:.2f}")
+                self.target_y.setText(f"{target_coords[1]:.2f}")
+            else:
+                self.show_error("Invalid coordinates format received from map.")
+        except Exception as e:
+            self.show_error(f"Error updating coordinates: {e}")
+
+    def show_error(self, message):
+        """Отображение ошибки через QMessageBox."""
+        QMessageBox.critical(self, "Error", message)
+
+    def fill_coordinates_from_map(self):
+        """Обновление координат из карты при нажатии Transfer Data."""
+        if hasattr(self, 'map_window') and self.map_window is not None:
+            coordinates = self.map_window.get_coordinates()
+            if coordinates:
+                self.update_coordinates_from_map(coordinates)
+        else:
+            self.solutions_text.setText("Map window is not open.")
 
     def load_json(self, filepath):
         try:
