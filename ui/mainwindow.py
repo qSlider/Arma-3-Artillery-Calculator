@@ -118,19 +118,23 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.show_error(f"Error opening map window: {e}")
 
-    def update_coordinates_from_map(self, artillery_coords, target_coords):
+    # mainwindow.py
+    def update_coordinates_from_map(self, artillery_coords, target_coords, artillery_h, target_h):
         try:
             if isinstance(artillery_coords, tuple) and isinstance(target_coords, tuple):
                 # Артиллерия
-                self.artillery_y.setText(f"{artillery_coords[0]:.2f}")
-                self.artillery_x.setText(f"{artillery_coords[1]:.2f}")
+                self.artillery_x.setText(f"{artillery_coords[0]:.2f}")
+                self.artillery_y.setText(f"{artillery_coords[1]:.2f}")
+                self.artillery_h.setText(f"{artillery_h:.2f}")
+
                 # Цель
-                self.target_y.setText(f"{target_coords[0]:.2f}")
-                self.target_x.setText(f"{target_coords[1]:.2f}")
+                self.target_x.setText(f"{target_coords[0]:.2f}")
+                self.target_y.setText(f"{target_coords[1]:.2f}")
+                self.target_h.setText(f"{target_h:.2f}")
             else:
-                self.show_error("Invalid coordinates format received from map.")
+                self.show_error("Некорректные координаты.")
         except Exception as e:
-            self.show_error(f"Error updating coordinates: {e}")
+            self.show_error(f"Ошибка обновления: {e}")
 
     def show_error(self, message):
         QMessageBox.critical(self, "Error", message)

@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QPixmap, QPainter, QBrush, QCursor
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import QGraphicsEllipseItem
+from logic.heightsLogic import get_height_for_coordinates
 
 
 class MapView(QGraphicsView):
@@ -77,7 +78,7 @@ class MapView(QGraphicsView):
 
 
 class MapWindow(QMainWindow):
-    coordinates_selected = pyqtSignal(tuple, tuple)
+    coordinates_selected = pyqtSignal(tuple, tuple, float, float)
 
     def __init__(self):
         super().__init__()
@@ -101,6 +102,7 @@ class MapWindow(QMainWindow):
 
         # Указываем правильный путь к директории карт
         self.map_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'map', 'img')
+        self.data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'map', 'data')  # Путь к данным
 
         # Проверка, существует ли директория
         if not os.path.exists(self.map_dir):
@@ -180,16 +182,35 @@ class MapWindow(QMainWindow):
         QTimer.singleShot(150, lambda: self.map_view.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio))
 
     def handle_point_added(self, point_type, x, y):
-        # Инвертируем Y-координату
         corrected_y = self.current_pixmap_height - y
+
+        # Получаем имя карты без расширения
+        map_name = os.path.splitext(self.map_selector.currentText())[0]
+        # Формируем путь к файлу высот
+        height_file = os.path.join(self.data_dir, f"{map_name}.txt")
+
+        if not os.path.exists(height_file):
+            print(f"Height file {height_file} not found!")
+            return
+
+        # Получаем высоту для координат
+        height = get_height_for_coordinates(x, corrected_y, height_file)
+
         if point_type == "Artillery":
             self.artillery_coords = (x, corrected_y)
+            self.artillery_height = height
         elif point_type == "Target":
             self.target_coords = (x, corrected_y)
+            self.target_height = height
 
         if self.artillery_coords and self.target_coords:
-            self.coordinates_selected.emit(self.artillery_coords, self.target_coords)
-            # Сброс для новых точек
+            self.coordinates_selected.emit(
+                self.artillery_coords,  # (x, y)
+                self.target_coords,  # (x, y)
+                self.artillery_height,  # float
+                self.target_height  # float
+            )
+
             self.artillery_coords = None
             self.target_coords = None
 
