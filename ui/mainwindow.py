@@ -1,4 +1,4 @@
-import json
+import json , os
 from PyQt5.QtWidgets import (QMainWindow, QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout,
                              QTextEdit, QCheckBox, QMessageBox)
 from logic.distanceLogic import calculate_distance, calculate_azimuth
@@ -14,7 +14,8 @@ class MainWindow(QMainWindow):
         self.resize(800, 600)
 
         # Load JSON data
-        self.data = self.load_json("config.json")
+        self.config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config.json')
+        self.data = self.load_json(self.config_path)
 
         # UI elements
         self.artillery_label = QLabel("Artillery:")
@@ -121,23 +122,21 @@ class MainWindow(QMainWindow):
         try:
             if isinstance(artillery_coords, tuple) and isinstance(target_coords, tuple):
                 # Артиллерия
-                self.artillery_x.setText(f"{artillery_coords[0]:.2f}")
-                self.artillery_y.setText(f"{artillery_coords[1]:.2f}")
+                self.artillery_y.setText(f"{artillery_coords[0]:.2f}")
+                self.artillery_x.setText(f"{artillery_coords[1]:.2f}")
 
                 # Цель
-                self.target_x.setText(f"{target_coords[0]:.2f}")
-                self.target_y.setText(f"{target_coords[1]:.2f}")
+                self.target_y.setText(f"{target_coords[0]:.2f}")
+                self.target_x.setText(f"{target_coords[1]:.2f}")
             else:
                 self.show_error("Invalid coordinates format received from map.")
         except Exception as e:
             self.show_error(f"Error updating coordinates: {e}")
 
     def show_error(self, message):
-        """Отображение ошибки через QMessageBox."""
         QMessageBox.critical(self, "Error", message)
 
     def fill_coordinates_from_map(self):
-        """Обновление координат из карты при нажатии Transfer Data."""
         if hasattr(self, 'map_window') and self.map_window is not None:
             coordinates = self.map_window.get_coordinates()
             if coordinates:

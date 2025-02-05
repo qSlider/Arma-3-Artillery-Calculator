@@ -79,7 +79,7 @@ class MapView(QGraphicsView):
 class MapWindow(QMainWindow):
     coordinates_selected = pyqtSignal(tuple, tuple)
 
-    def __init__(self, map_dir="map/img"):
+    def __init__(self):
         super().__init__()
         self.setWindowTitle("Map Viewer")
         self.resize(800, 600)
@@ -98,7 +98,15 @@ class MapWindow(QMainWindow):
         self.target_button = QPushButton("Add Target")
         self.target_button.clicked.connect(lambda: self.select_point("Target"))
 
-        self.map_dir = map_dir
+        # Указываем правильный путь к директории карт
+        self.map_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'map', 'img')
+
+        # Проверка, существует ли директория
+        if not os.path.exists(self.map_dir):
+            print(f"Directory {self.map_dir} does not exist!")
+        else:
+            print(f"Maps will be loaded from {self.map_dir}")
+
         self.load_map_files()
 
         layout = QVBoxLayout()
@@ -125,14 +133,21 @@ class MapWindow(QMainWindow):
         self.map_view.selected_point_type = point_type
 
     def load_map_files(self):
+        # Загрузка карт из директории map_dir
         if not os.path.exists(self.map_dir):
-            os.makedirs(self.map_dir)
+            print(f"Directory {self.map_dir} does not exist!")
+            return
 
-        map_files = [f for f in os.listdir(self.map_dir) if f.endswith(".png")]
+        # Получение всех файлов карт в папке
+        map_files = [f for f in os.listdir(self.map_dir) if f.endswith('.png') or f.endswith('.jpg')]
+
+        # Логируем найденные файлы карт
         if map_files:
-            self.map_selector.addItems(map_files)
+            print(f"Found the following map files: {map_files}")
         else:
-            self.map_selector.addItem("No maps available")
+            print("No map files found in the directory!")
+
+        self.map_selector.addItems(map_files)
 
     def load_map(self, index):
         if index < 0 or self.map_selector.count() == 0:
@@ -172,13 +187,10 @@ class MapWindow(QMainWindow):
             self.coordinates_selected.emit(self.artillery_coords, self.target_coords)
 
     def emit_coordinates(self, x, y):
-        """Передача координат через сигнал."""
         self.coordinates_selected.emit({'x': x, 'y': y})
 
     def get_coordinates(self):
-        """Возврат текущих координат."""
-        # Здесь можно заменить на получение значений из UI
-        return {'x': 100, 'y': 200}  # Пример значений
+        return {'x': 100, 'y': 200}
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
