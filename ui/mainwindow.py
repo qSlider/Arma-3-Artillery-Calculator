@@ -112,19 +112,18 @@ class MainWindow(QMainWindow):
         try:
             self.map_window = MapWindow()
             # В методе open_map_window замените строку:
+            # В методе open_map_window (mainwindow.py):
             self.map_window.coordinates_selected.connect(self.update_coordinates_from_map)
             self.map_window.show()
         except Exception as e:
             self.show_error(f"Error opening map window: {e}")
 
     def update_coordinates_from_map(self, artillery_coords, target_coords):
-        """Обновляет координаты артиллерии и цели из карты."""
         try:
             if isinstance(artillery_coords, tuple) and isinstance(target_coords, tuple):
                 # Артиллерия
                 self.artillery_y.setText(f"{artillery_coords[0]:.2f}")
                 self.artillery_x.setText(f"{artillery_coords[1]:.2f}")
-
                 # Цель
                 self.target_y.setText(f"{target_coords[0]:.2f}")
                 self.target_x.setText(f"{target_coords[1]:.2f}")

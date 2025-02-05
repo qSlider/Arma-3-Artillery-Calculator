@@ -40,9 +40,9 @@ def get_height_for_coordinates(x, y, file_path):
 
 
 # Пример использования
-file_path = r'C:\Users\mstre\PycharmProjects\ArtilleryCalcu\ui\map\data\virolahti.txt'  # Путь к файлу
-x_input = 4045.63  # Пример введенных координат X
-y_input = 14008.22  # Пример введенных координат Y
+file_path = r'C:\Users\mstre\PycharmProjects\ArtilleryCalcu\map\data\virolahti.txt'  # Путь к файлу
+x_input = 14851  # Пример введенных координат X
+y_input = 15100  # Пример введенных координат Y
 
 height = get_height_for_coordinates(x_input, y_input, file_path)
 if height is not None:

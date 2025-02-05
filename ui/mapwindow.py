@@ -81,6 +81,7 @@ class MapWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self.current_pixmap_height = 0
         self.setWindowTitle("Map Viewer")
         self.resize(800, 600)
 
@@ -175,16 +176,22 @@ class MapWindow(QMainWindow):
         self.scene.addPixmap(pixmap)
         self.map_view.setScene(self.scene)
         self.scene.update()
+        self.current_pixmap_height = pixmap.height()  # Сохраняем высоту карты
         QTimer.singleShot(150, lambda: self.map_view.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio))
 
     def handle_point_added(self, point_type, x, y):
+        # Инвертируем Y-координату
+        corrected_y = self.current_pixmap_height - y
         if point_type == "Artillery":
-            self.artillery_coords = (x, y)
+            self.artillery_coords = (x, corrected_y)
         elif point_type == "Target":
-            self.target_coords = (x, y)
+            self.target_coords = (x, corrected_y)
 
         if self.artillery_coords and self.target_coords:
             self.coordinates_selected.emit(self.artillery_coords, self.target_coords)
+            # Сброс для новых точек
+            self.artillery_coords = None
+            self.target_coords = None
 
     def emit_coordinates(self, x, y):
         self.coordinates_selected.emit({'x': x, 'y': y})
