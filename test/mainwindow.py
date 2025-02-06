@@ -1,10 +1,12 @@
-import json
-from PyQt5.QtWidgets import (QMainWindow, QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QTextEdit, QCheckBox)
+import sys
+import json , os
+from PyQt5.QtWidgets import (QMainWindow, QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout,
+                             QTextEdit, QCheckBox, QMessageBox)
 from logic.distanceLogic import calculate_distance, calculate_azimuth
 from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation
 from mapwindow import MapWindow
 
-
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -13,7 +15,8 @@ class MainWindow(QMainWindow):
         self.resize(800, 600)
 
         # Load JSON data
-        self.data = self.load_json("config.json")
+        self.config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config.json')
+        self.data = self.load_json(self.config_path)
 
         # UI elements
         self.artillery_label = QLabel("Artillery:")
@@ -106,8 +109,44 @@ class MainWindow(QMainWindow):
         self.update_shells()
 
     def open_map_window(self):
-        self.map_window = MapWindow()
-        self.map_window.show()
+        """Открытие окна карты и установка связи с координатами."""
+        try:
+            self.map_window = MapWindow()
+            # В методе open_map_window замените строку:
+            # В методе open_map_window (mainwindow.py):
+            self.map_window.coordinates_selected.connect(self.update_coordinates_from_map)
+            self.map_window.show()
+        except Exception as e:
+            self.show_error(f"Error opening map window: {e}")
+
+    # mainwindow.py
+    def update_coordinates_from_map(self, artillery_coords, target_coords, artillery_h, target_h):
+        try:
+            if isinstance(artillery_coords, tuple) and isinstance(target_coords, tuple):
+                # Артиллерия
+                self.artillery_y.setText(f"{artillery_coords[0]:.2f}")
+                self.artillery_x.setText(f"{artillery_coords[1]:.2f}")
+                self.artillery_h.setText(f"{artillery_h:.2f}")
+
+                # Цель
+                self.target_y.setText(f"{target_coords[0]:.2f}")
+                self.target_x.setText(f"{target_coords[1]:.2f}")
+                self.target_h.setText(f"{target_h:.2f}")
+            else:
+                self.show_error("Некорректные координаты.")
+        except Exception as e:
+            self.show_error(f"Ошибка обновления: {e}")
+
+    def show_error(self, message):
+        QMessageBox.critical(self, "Error", message)
+
+    def fill_coordinates_from_map(self):
+        if hasattr(self, 'map_window') and self.map_window is not None:
+            coordinates = self.map_window.get_coordinates()
+            if coordinates:
+                self.update_coordinates_from_map(coordinates)
+        else:
+            self.solutions_text.setText("Map window is not open.")
 
     def load_json(self, filepath):
         try:
@@ -173,8 +212,18 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.solutions_text.setText(f"An error occurred: {e}")
 
+def create_folders():
+    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    folders = [
+        os.path.join(base_dir, "map", "data"),
+        os.path.join(base_dir, "map", "img")
+    ]
+    for folder in folders:
+        os.makedirs(folder, exist_ok=True)
+
 
 if __name__ == "__main__":
+    create_folders()
     import sys
     from PyQt5.QtWidgets import QApplication
 

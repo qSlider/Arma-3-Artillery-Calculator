@@ -8,6 +8,7 @@ from PyQt5.QtGui import QPixmap, QPainter, QBrush, QCursor
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import QGraphicsEllipseItem
 from logic.heightsLogic import get_height_for_coordinates
+from PyQt5.QtSvg import QGraphicsSvgItem
 
 
 class MapView(QGraphicsView):
@@ -83,6 +84,8 @@ class MapWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self.current_map_height = 0  # Переименовано для общей логики
+        self.current_map_item = None  # Для хранения текущего элемента карты
         self.current_pixmap_height = 0
         self.setWindowTitle("Map Viewer")
         self.resize(800, 600)
@@ -139,7 +142,8 @@ class MapWindow(QMainWindow):
             print(f"Directory {self.map_dir} does not exist!")
             return
 
-        map_files = [f for f in os.listdir(self.map_dir) if f.endswith('.png') or f.endswith('.jpg')]
+        # Добавляем фильтр для .svg файлов
+        map_files = [f for f in os.listdir(self.map_dir) if f.lower().endswith(('.png', '.jpg', '.svg'))]
 
         if map_files:
             print(f"Found the following map files: {map_files}")
@@ -154,15 +158,53 @@ class MapWindow(QMainWindow):
 
         map_name = self.map_selector.currentText()
         map_path = os.path.join(self.map_dir, map_name)
+        ext = os.path.splitext(map_name)[1].lower()
 
         if os.path.exists(map_path):
-            pixmap = QPixmap(map_path)
-            if not pixmap.isNull():
-                self.display_map(pixmap)
+            if ext == '.svg':
+                self.display_svg(map_path)
             else:
-                self.display_error("Failed to load map: invalid file.")
+                self.display_raster(map_path)
         else:
             self.display_error("Map file does not exist.")
+
+    def display_raster(self, path):
+        """Отображение растровых изображений (PNG, JPG)"""
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            self.display_error("Failed to load raster image.")
+            return
+
+        self.scene.clear()
+        self.current_map_item = self.scene.addPixmap(pixmap)
+        self.current_map_height = pixmap.height()
+        self.reset_and_fit()
+
+    def display_svg(self, path):
+        """Отображение SVG изображений"""
+        svg_item = QGraphicsSvgItem(path)
+        if not svg_item.renderer().isValid():
+            self.display_error("Failed to load SVG image.")
+            return
+
+        self.scene.clear()
+        self.current_map_item = svg_item
+        self.scene.addItem(svg_item)
+
+        # Получаем размеры из viewBox SVG
+        viewbox = svg_item.renderer().viewBox()
+        self.current_map_height = viewbox.height() if not viewbox.isEmpty() else 0
+
+        self.reset_and_fit()
+
+    def reset_and_fit(self):
+        """Общая функция для сброса масштаба и подгонки размера"""
+        self.reset_zoom()
+        if self.current_map_item:
+            QTimer.singleShot(150, lambda: self.map_view.fitInView(
+                self.current_map_item.boundingRect(),
+                Qt.KeepAspectRatio
+            ))
 
     def reset_zoom(self):
         self.map_view.resetTransform()
@@ -178,7 +220,7 @@ class MapWindow(QMainWindow):
         QTimer.singleShot(150, lambda: self.map_view.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio))
 
     def handle_point_added(self, point_type, x, y):
-        corrected_y = self.current_pixmap_height - y
+        corrected_y = self.current_map_height - y
         map_name = os.path.splitext(self.map_selector.currentText())[0]
         height_file = os.path.join(self.data_dir, f"{map_name}.txt")
 

@@ -1,14 +1,13 @@
 import os
 
-os.environ["QT_OPENGL"] = "desktop"
-
 from PyQt5.QtWidgets import (
     QMainWindow, QGraphicsView, QGraphicsScene, QVBoxLayout, QWidget, QComboBox, QLabel, QPushButton, QHBoxLayout,
-    QMessageBox
+    QMessageBox, QLineEdit
 )
 from PyQt5.QtGui import QPixmap, QPainter, QBrush, QCursor
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import QGraphicsEllipseItem
+from logic.heightsLogic import get_height_for_coordinates
 
 
 class MapView(QGraphicsView):
@@ -41,7 +40,7 @@ class MapView(QGraphicsView):
         if event.button() == Qt.LeftButton:
             if self.selected_point_type:
                 self.add_point(self.selected_point_type)
-                self.selected_point_type = None  # Сбрасываем выбор после размещения точки
+                self.selected_point_type = None
             else:
                 self.dragging = True
                 self.last_mouse_position = event.pos()
@@ -80,8 +79,11 @@ class MapView(QGraphicsView):
 
 
 class MapWindow(QMainWindow):
-    def __init__(self, map_dir="map/img"):
+    coordinates_selected = pyqtSignal(tuple, tuple, float, float)
+
+    def __init__(self):
         super().__init__()
+        self.current_pixmap_height = 0
         self.setWindowTitle("Map Viewer")
         self.resize(800, 600)
 
@@ -99,7 +101,14 @@ class MapWindow(QMainWindow):
         self.target_button = QPushButton("Add Target")
         self.target_button.clicked.connect(lambda: self.select_point("Target"))
 
-        self.map_dir = map_dir
+        self.map_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'map', 'img')
+        self.data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'map', 'data')
+
+        if not os.path.exists(self.map_dir):
+            print(f"Directory {self.map_dir} does not exist!")
+        else:
+            print(f"Maps will be loaded from {self.map_dir}")
+
         self.load_map_files()
 
         layout = QVBoxLayout()
@@ -119,18 +128,25 @@ class MapWindow(QMainWindow):
         if self.map_selector.count() > 0:
             self.load_map(0)
 
+        self.artillery_coords = None
+        self.target_coords = None
+
     def select_point(self, point_type):
         self.map_view.selected_point_type = point_type
 
     def load_map_files(self):
         if not os.path.exists(self.map_dir):
-            os.makedirs(self.map_dir)
+            print(f"Directory {self.map_dir} does not exist!")
+            return
 
-        map_files = [f for f in os.listdir(self.map_dir) if f.endswith(".png")]
+        map_files = [f for f in os.listdir(self.map_dir) if f.endswith('.png') or f.endswith('.jpg')]
+
         if map_files:
-            self.map_selector.addItems(map_files)
+            print(f"Found the following map files: {map_files}")
         else:
-            self.map_selector.addItem("No maps available")
+            print("No map files found in the directory!")
+
+        self.map_selector.addItems(map_files)
 
     def load_map(self, index):
         if index < 0 or self.map_selector.count() == 0:
@@ -158,10 +174,90 @@ class MapWindow(QMainWindow):
         self.scene.addPixmap(pixmap)
         self.map_view.setScene(self.scene)
         self.scene.update()
+        self.current_pixmap_height = pixmap.height()  # Сохраняем высоту карты
         QTimer.singleShot(150, lambda: self.map_view.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio))
 
     def handle_point_added(self, point_type, x, y):
-        print(f"Point added: Type={point_type}, X={x:.2f}, Y={y:.2f}")
+        corrected_y = self.current_pixmap_height - y
+        map_name = os.path.splitext(self.map_selector.currentText())[0]
+        height_file = os.path.join(self.data_dir, f"{map_name}.txt")
+
+        if not os.path.exists(height_file):
+            print(f"Height file {height_file} not found!")
+            return
+
+        height = get_height_for_coordinates(x, corrected_y, height_file)
+
+        if point_type == "Artillery":
+            self.artillery_coords = (x, corrected_y)
+            self.artillery_height = height
+        elif point_type == "Target":
+            self.target_coords = (x, corrected_y)
+            self.target_height = height
+
+        if self.artillery_coords and self.target_coords:
+            self.coordinates_selected.emit(
+                self.artillery_coords,
+                self.target_coords,
+                self.artillery_height,
+                self.target_height
+            )
+
+            self.artillery_coords = None
+            self.target_coords = None
+
+    def emit_coordinates(self, x, y):
+        self.coordinates_selected.emit({'x': x, 'y': y})
+
+    def get_coordinates(self):
+        return {'x': 100, 'y': 200}
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Main Window")
+
+        self.map_window_button = QPushButton("Open Map")
+        self.map_window_button.clicked.connect(self.open_map_window)
+
+        self.artillery_x = QLineEdit()
+        self.artillery_x.setPlaceholderText("Artillery X")
+
+        self.artillery_y = QLineEdit()
+        self.artillery_y.setPlaceholderText("Artillery Y")
+
+        self.target_x = QLineEdit()
+        self.target_x.setPlaceholderText("Target X")
+
+        self.target_y = QLineEdit()
+        self.target_y.setPlaceholderText("Target Y")
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.map_window_button)
+        layout.addWidget(QLabel("Artillery Coordinates:"))
+        layout.addWidget(self.artillery_x)
+        layout.addWidget(self.artillery_y)
+        layout.addWidget(QLabel("Target Coordinates:"))
+        layout.addWidget(self.target_x)
+        layout.addWidget(self.target_y)
+
+        container = QWidget()
+        container.setLayout(layout)
+        self.setCentralWidget(container)
+
+        self.map_window = None
+
+    def open_map_window(self):
+        if not self.map_window:
+            self.map_window = MapWindow()
+            self.map_window.coordinates_selected.connect(self.update_coordinates)
+        self.map_window.show()
+
+    def update_coordinates(self, artillery_coords, target_coords):
+        self.artillery_x.setText(f"{artillery_coords[0]:.2f}")
+        self.artillery_y.setText(f"{artillery_coords[1]:.2f}")
+        self.target_x.setText(f"{target_coords[0]:.2f}")
+        self.target_y.setText(f"{target_coords[1]:.2f}")
+
 
 
 if __name__ == "__main__":
@@ -169,6 +265,6 @@ if __name__ == "__main__":
     from PyQt5.QtWidgets import QApplication
 
     app = QApplication(sys.argv)
-    window = MapWindow()
+    window = MainWindow()
     window.show()
     sys.exit(app.exec_())
