@@ -8,6 +8,13 @@ from PyQt5.QtGui import QPixmap, QPainter, QBrush, QCursor
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import QGraphicsEllipseItem
 from logic.heightsLogic import get_height_for_coordinates
+from PyQt5.QtSvg import QGraphicsSvgItem
+
+
+def svg_map_loader(map_dir, map_files):
+    for map_file in map_files:
+        map_path = os.path.join(map_dir, map_file)
+        yield map_path
 
 
 class MapView(QGraphicsView):
@@ -79,10 +86,13 @@ class MapView(QGraphicsView):
 
 
 class MapWindow(QMainWindow):
-    coordinates_selected = pyqtSignal(tuple, tuple, float, float)
+    artillery_coordinates_selected = pyqtSignal(tuple, float)
+    target_coordinates_selected = pyqtSignal(tuple, float)
 
     def __init__(self):
         super().__init__()
+        self.current_map_height = 0  # Переименовано для общей логики
+        self.current_map_item = None  # Для хранения текущего элемента карты
         self.current_pixmap_height = 0
         self.setWindowTitle("Map Viewer")
         self.resize(800, 600)
@@ -139,7 +149,8 @@ class MapWindow(QMainWindow):
             print(f"Directory {self.map_dir} does not exist!")
             return
 
-        map_files = [f for f in os.listdir(self.map_dir) if f.endswith('.png') or f.endswith('.jpg')]
+        # Добавляем фильтр для .svg файлов
+        map_files = [f for f in os.listdir(self.map_dir) if f.lower().endswith(('.png', '.jpg', '.svg'))]
 
         if map_files:
             print(f"Found the following map files: {map_files}")
@@ -154,15 +165,53 @@ class MapWindow(QMainWindow):
 
         map_name = self.map_selector.currentText()
         map_path = os.path.join(self.map_dir, map_name)
+        ext = os.path.splitext(map_name)[1].lower()
 
         if os.path.exists(map_path):
-            pixmap = QPixmap(map_path)
-            if not pixmap.isNull():
-                self.display_map(pixmap)
+            if ext == '.svg':
+                self.display_svg(map_path)
             else:
-                self.display_error("Failed to load map: invalid file.")
+                self.display_raster(map_path)
         else:
             self.display_error("Map file does not exist.")
+
+    def display_raster(self, path):
+        """Отображение растровых изображений (PNG, JPG)"""
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            self.display_error("Failed to load raster image.")
+            return
+
+        self.scene.clear()
+        self.current_map_item = self.scene.addPixmap(pixmap)
+        self.current_map_height = pixmap.height()
+        self.reset_and_fit()
+
+    def display_svg(self, path):
+        """Отображение SVG изображений"""
+        svg_item = QGraphicsSvgItem(path)
+        if not svg_item.renderer().isValid():
+            self.display_error("Failed to load SVG image.")
+            return
+
+        self.scene.clear()
+        self.current_map_item = svg_item
+        self.scene.addItem(svg_item)
+
+        # Получаем размеры из viewBox SVG
+        viewbox = svg_item.renderer().viewBox()
+        self.current_map_height = viewbox.height() if not viewbox.isEmpty() else 0
+
+        self.reset_and_fit()
+
+    def reset_and_fit(self):
+        """Общая функция для сброса масштаба и подгонки размера"""
+        self.reset_zoom()
+        if self.current_map_item:
+            QTimer.singleShot(150, lambda: self.map_view.fitInView(
+                self.current_map_item.boundingRect(),
+                Qt.KeepAspectRatio
+            ))
 
     def reset_zoom(self):
         self.map_view.resetTransform()
@@ -178,7 +227,7 @@ class MapWindow(QMainWindow):
         QTimer.singleShot(150, lambda: self.map_view.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio))
 
     def handle_point_added(self, point_type, x, y):
-        corrected_y = self.current_pixmap_height - y
+        corrected_y = self.current_map_height - y
         map_name = os.path.splitext(self.map_selector.currentText())[0]
         height_file = os.path.join(self.data_dir, f"{map_name}.txt")
 
@@ -191,20 +240,12 @@ class MapWindow(QMainWindow):
         if point_type == "Artillery":
             self.artillery_coords = (x, corrected_y)
             self.artillery_height = height
+            self.artillery_coordinates_selected.emit(self.artillery_coords, self.artillery_height)
+
         elif point_type == "Target":
             self.target_coords = (x, corrected_y)
             self.target_height = height
-
-        if self.artillery_coords and self.target_coords:
-            self.coordinates_selected.emit(
-                self.artillery_coords,
-                self.target_coords,
-                self.artillery_height,
-                self.target_height
-            )
-
-            self.artillery_coords = None
-            self.target_coords = None
+            self.target_coordinates_selected.emit(self.target_coords, self.target_height)
 
     def emit_coordinates(self, x, y):
         self.coordinates_selected.emit({'x': x, 'y': y})
@@ -253,11 +294,25 @@ class MainWindow(QMainWindow):
         self.map_window.show()
 
     def update_coordinates(self, artillery_coords, target_coords):
-        self.artillery_x.setText(f"{artillery_coords[0]:.2f}")
-        self.artillery_y.setText(f"{artillery_coords[1]:.2f}")
+        # Артиллерия — обновляем только если изменилось
+        if (self.artillery_x.text() != f"{artillery_coords[0]:.2f}" or
+                self.artillery_y.text() != f"{artillery_coords[1]:.2f}"):
+            self.artillery_x.setText(f"{artillery_coords[0]:.2f}")
+            self.artillery_y.setText(f"{artillery_coords[1]:.2f}")
+
+        # Цель — обновляем всегда
         self.target_x.setText(f"{target_coords[0]:.2f}")
         self.target_y.setText(f"{target_coords[1]:.2f}")
 
+    def update_artillery_coordinates(self, artillery_coords):
+        """Обновляет только координаты артиллерии."""
+        self.artillery_x.setText(f"{artillery_coords[0]:.2f}")
+        self.artillery_y.setText(f"{artillery_coords[1]:.2f}")
+
+    def update_target_coordinates(self, target_coords):
+        """Обновляет только координаты цели."""
+        self.target_x.setText(f"{target_coords[0]:.2f}")
+        self.target_y.setText(f"{target_coords[1]:.2f}")
 
 
 if __name__ == "__main__":

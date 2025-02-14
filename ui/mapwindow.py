@@ -11,6 +11,12 @@ from logic.heightsLogic import get_height_for_coordinates
 from PyQt5.QtSvg import QGraphicsSvgItem
 
 
+def svg_map_loader(map_dir, map_files):
+    for map_file in map_files:
+        map_path = os.path.join(map_dir, map_file)
+        yield map_path
+
+
 class MapView(QGraphicsView):
     point_added = pyqtSignal(str, float, float)
 
@@ -80,12 +86,13 @@ class MapView(QGraphicsView):
 
 
 class MapWindow(QMainWindow):
-    coordinates_selected = pyqtSignal(tuple, tuple, float, float)
+    artillery_coordinates_selected = pyqtSignal(tuple, float)
+    target_coordinates_selected = pyqtSignal(tuple, float)
 
     def __init__(self):
         super().__init__()
-        self.current_map_height = 0  # Переименовано для общей логики
-        self.current_map_item = None  # Для хранения текущего элемента карты
+        self.current_map_height = 0
+        self.current_map_item = None
         self.current_pixmap_height = 0
         self.setWindowTitle("Map Viewer")
         self.resize(800, 600)
@@ -142,7 +149,6 @@ class MapWindow(QMainWindow):
             print(f"Directory {self.map_dir} does not exist!")
             return
 
-        # Добавляем фильтр для .svg файлов
         map_files = [f for f in os.listdir(self.map_dir) if f.lower().endswith(('.png', '.jpg', '.svg'))]
 
         if map_files:
@@ -169,7 +175,6 @@ class MapWindow(QMainWindow):
             self.display_error("Map file does not exist.")
 
     def display_raster(self, path):
-        """Отображение растровых изображений (PNG, JPG)"""
         pixmap = QPixmap(path)
         if pixmap.isNull():
             self.display_error("Failed to load raster image.")
@@ -181,7 +186,6 @@ class MapWindow(QMainWindow):
         self.reset_and_fit()
 
     def display_svg(self, path):
-        """Отображение SVG изображений"""
         svg_item = QGraphicsSvgItem(path)
         if not svg_item.renderer().isValid():
             self.display_error("Failed to load SVG image.")
@@ -191,7 +195,6 @@ class MapWindow(QMainWindow):
         self.current_map_item = svg_item
         self.scene.addItem(svg_item)
 
-        # Получаем размеры из viewBox SVG
         viewbox = svg_item.renderer().viewBox()
         self.current_map_height = viewbox.height() if not viewbox.isEmpty() else 0
 
@@ -233,20 +236,12 @@ class MapWindow(QMainWindow):
         if point_type == "Artillery":
             self.artillery_coords = (x, corrected_y)
             self.artillery_height = height
+            self.artillery_coordinates_selected.emit(self.artillery_coords, self.artillery_height)
+
         elif point_type == "Target":
             self.target_coords = (x, corrected_y)
             self.target_height = height
-
-        if self.artillery_coords and self.target_coords:
-            self.coordinates_selected.emit(
-                self.artillery_coords,
-                self.target_coords,
-                self.artillery_height,
-                self.target_height
-            )
-
-            self.artillery_coords = None
-            self.target_coords = None
+            self.target_coordinates_selected.emit(self.target_coords, self.target_height)
 
     def emit_coordinates(self, x, y):
         self.coordinates_selected.emit({'x': x, 'y': y})
@@ -295,11 +290,21 @@ class MainWindow(QMainWindow):
         self.map_window.show()
 
     def update_coordinates(self, artillery_coords, target_coords):
-        self.artillery_x.setText(f"{artillery_coords[0]:.2f}")
-        self.artillery_y.setText(f"{artillery_coords[1]:.2f}")
+        if (self.artillery_x.text() != f"{artillery_coords[0]:.2f}" or
+                self.artillery_y.text() != f"{artillery_coords[1]:.2f}"):
+            self.artillery_x.setText(f"{artillery_coords[0]:.2f}")
+            self.artillery_y.setText(f"{artillery_coords[1]:.2f}")
+
         self.target_x.setText(f"{target_coords[0]:.2f}")
         self.target_y.setText(f"{target_coords[1]:.2f}")
 
+    def update_artillery_coordinates(self, artillery_coords):
+        self.artillery_x.setText(f"{artillery_coords[0]:.2f}")
+        self.artillery_y.setText(f"{artillery_coords[1]:.2f}")
+
+    def update_target_coordinates(self, target_coords):
+        self.target_x.setText(f"{target_coords[0]:.2f}")
+        self.target_y.setText(f"{target_coords[1]:.2f}")
 
 
 if __name__ == "__main__":

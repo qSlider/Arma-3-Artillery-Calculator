@@ -1,7 +1,6 @@
 import math
 
 
-# Чтение данных из файла
 def read_data(file_path):
     data = []
     with open(file_path, 'r') as f:
@@ -14,7 +13,6 @@ def read_data(file_path):
     return data
 
 
-# Функция для нахождения ближайшей точки
 def find_nearest_point(x, y, data):
     nearest_point = None
     min_distance = float('inf')
@@ -28,13 +26,12 @@ def find_nearest_point(x, y, data):
     return nearest_point
 
 
-# Основная логика
 def get_height_for_coordinates(x, y, file_path):
     data = read_data(file_path)
     nearest_point = find_nearest_point(x, y, data)
 
     if nearest_point:
-        return nearest_point[2]  # Возвращаем высоту ближайшей точки
+        return nearest_point[2]
     else:
         return None
 

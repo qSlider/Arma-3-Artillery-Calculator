@@ -109,12 +109,11 @@ class MainWindow(QMainWindow):
         self.update_shells()
 
     def open_map_window(self):
-        """Открытие окна карты и установка связи с координатами."""
         try:
             self.map_window = MapWindow()
-            # В методе open_map_window замените строку:
-            # В методе open_map_window (mainwindow.py):
-            self.map_window.coordinates_selected.connect(self.update_coordinates_from_map)
+            # Подключаем отдельные сигналы
+            self.map_window.artillery_coordinates_selected.connect(self.update_artillery_position)
+            self.map_window.target_coordinates_selected.connect(self.update_target_position)
             self.map_window.show()
         except Exception as e:
             self.show_error(f"Error opening map window: {e}")
@@ -122,20 +121,35 @@ class MainWindow(QMainWindow):
     # mainwindow.py
     def update_coordinates_from_map(self, artillery_coords, target_coords, artillery_h, target_h):
         try:
-            if isinstance(artillery_coords, tuple) and isinstance(target_coords, tuple):
-                # Артиллерия
+            if isinstance(artillery_coords, tuple):
                 self.artillery_y.setText(f"{artillery_coords[0]:.2f}")
                 self.artillery_x.setText(f"{artillery_coords[1]:.2f}")
                 self.artillery_h.setText(f"{artillery_h:.2f}")
 
-                # Цель
+            if isinstance(target_coords, tuple):
                 self.target_y.setText(f"{target_coords[0]:.2f}")
                 self.target_x.setText(f"{target_coords[1]:.2f}")
                 self.target_h.setText(f"{target_h:.2f}")
-            else:
-                self.show_error("Некорректные координаты.")
         except Exception as e:
-            self.show_error(f"Ошибка обновления: {e}")
+            self.show_error(f"Ошибка обновления координат: {e}")
+
+    def update_artillery_position(self, artillery_coords, artillery_h):
+        try:
+            if isinstance(artillery_coords, tuple):
+                self.artillery_y.setText(f"{artillery_coords[0]:.2f}")
+                self.artillery_x.setText(f"{artillery_coords[1]:.2f}")
+                self.artillery_h.setText(f"{artillery_h:.2f}")
+        except Exception as e:
+            self.show_error(f"Ошибка обновления артиллерии: {e}")
+
+    def update_target_position(self, target_coords, target_h):
+        try:
+            if isinstance(target_coords, tuple):
+                self.target_y.setText(f"{target_coords[0]:.2f}")
+                self.target_x.setText(f"{target_coords[1]:.2f}")
+                self.target_h.setText(f"{target_h:.2f}")
+        except Exception as e:
+            self.show_error(f"Ошибка обновления цели: {e}")
 
     def show_error(self, message):
         QMessageBox.critical(self, "Error", message)

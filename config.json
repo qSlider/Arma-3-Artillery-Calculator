@@ -111,6 +111,90 @@
                     "description": "HE"
                 }
             ]
+        },
+        {
+            "name": "D-30",
+            "type": "towed",
+            "caliber": 122,
+            "compatibleShells": [
+                {
+                    "name": "53-OF-462",
+                    "type": "HE",
+                    "caliber": 122,
+                    "chargeSpeed": 25,
+                    "charges": {
+                        "Charge 0": 179.4,
+                        "Charge 1": 220.8,
+                        "Charge 2": 269.1,
+                        "Charge 3": 303.6,
+                        "Charge 4": 345,
+                        "Charge 5": 389.2
+                    },
+                    "description": "HE"
+                },
+                {
+                    "name": "3BK6M",
+                    "type": "HEAT",
+                    "caliber": 122,
+                    "chargeSpeed": 22,
+                    "charges": {
+                        "Charge 0": 176.8,
+                        "Charge 1": 217.7,
+                        "Charge 2": 265.2,
+                        "Charge 3": 299.2,
+                        "Charge 4": 340,
+                        "Charge 5": 383.5
+                    },
+                    "description": "General-purpose shell for various targets."
+                }
+            ]
+        },
+        {
+            "name": "Grap-P",
+            "type": "towed",
+            "caliber": 122,
+            "compatibleShells": [
+                {
+                    "name": "53-OF-462",
+                    "type": "HE",
+                    "caliber": 122,
+                    "chargeSpeed": 25,
+                    "charges": {
+                        "Charge 0": 107,
+                        "Charge 1": 115.1,
+                        "Charge 2": 124.1,
+                        "Charge 3": 133.8,
+                        "Charge 4": 144.3,
+                        "Charge 5": 155.6,
+                        "Charge 6": 167.9,
+                        "Charge 7": 181.2,
+                        "Charge 8": 181.2,
+                        "Charge 9": 181.2,
+                        "Charge 10": 227.2,
+                        "Charge 11": 244.9,
+                        "Charge 12": 262.7,
+                        "Charge 13": 280.5,
+                        "Charge 14": 298.2,
+                        "Charge 15": 313.8
+                    },
+                    "description": "HE"
+                },
+                {
+                    "name": "3BK6M",
+                    "type": "HEAT",
+                    "caliber": 122,
+                    "chargeSpeed": 22,
+                    "charges": {
+                        "Charge 0": 176.8,
+                        "Charge 1": 217.7,
+                        "Charge 2": 265.2,
+                        "Charge 3": 299.2,
+                        "Charge 4": 340,
+                        "Charge 5": 383.5
+                    },
+                    "description": "General-purpose shell for various targets."
+                }
+            ]
         }
     ]
 }

@@ -49,5 +49,7 @@ def calculate_high_elevation(R, v, h_s, h_t, g=9.79):
 
 
 
+
+
 print(calculate_elevation_with_height(4000, 226.6, 0, 0))
 print(calculate_high_elevation(4000, 226.6, 0, 100))
