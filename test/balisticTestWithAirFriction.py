@@ -1,70 +1,35 @@
-import math
-
-def calculate_elevation_with_air_friction(R, v, h_s, h_t, air_friction=-6e-05, g=9.79):
-    # Применяем коэффициент сопротивления воздуха
-    v_corrected = v * (1 + air_friction * R)  # Скорость с учетом сопротивления
-
-    max_R = v_corrected ** 2 / g
-    if R > max_R:
-        return "Дальність неможлива"
-
-    # Рассчитываем угол в радианах для дальности без учета высот
-    arg = (R * g) / (v_corrected ** 2)
-    theta_rad = math.asin(arg) / 2
-
-    # Коррекция угла для разницы высот
-    delta_h = h_t - h_s
-    theta_correction_rad = math.atan(delta_h / R)
-
-    # Новый угол с учетом высоты и скорости с учетом сопротивления
-    theta_new_rad = theta_rad + theta_correction_rad
-
-    # Переводим в мили (угол в радианах * 6400 / 2π)
-    theta_mil = theta_new_rad * (6400 / (2 * math.pi))
-    return round(theta_mil)
-
-def calculate_high_elevation_with_air_friction(R, v, h_s, h_t, air_friction=-6e-05, g=9.79):
-    '''
-    R - Горизонтальная дистанция до цели (м)
-    v - Начальная скорость снаряда (м/с)
-    h_s - Высота стреляющего (м)
-    h_t - Высота цели (м)
-    air_friction - Коэффициент сопротивления воздуха
-    g - Ускорение свободного падения (м/с²)
-    '''
-    # Применяем коэффициент сопротивления воздуха
-    v_corrected = v * (1 + air_friction * R)  # Скорость с учетом сопротивления
-
-    delta_h = h_t - h_s
-
-    A = (g * R ** 2) / (2 * v_corrected ** 2)
-    B = -R
-    C = A + delta_h
-
-    discriminant = B ** 2 - 4 * A * C
-
-    if discriminant < 0:
-        return "Дальність неможлива"
-
-    sqrt_discriminant = math.sqrt(discriminant)
-
-    T1 = (-B + sqrt_discriminant) / (2 * A)
-    T2 = (-B - sqrt_discriminant) / (2 * A)
-
-    theta1 = math.atan(T1)
-    theta2 = math.atan(T2)
-
-    # Выбираем максимальный угол
-    theta_high = max(theta1, theta2)
-
-    # Переводим угол в мили (угол в радианах * 6400 / 2π)
-    theta_mil = theta_high * (6400 / (2 * math.pi))
-
-    return round(theta_mil)
+import numpy as np
 
 
-# Пример использования:
+def calculate_angle_from_distance(own_pos, target_pos, muzzle_velocity, target_dist, high_angle=True,
+                                  air_friction=-6e-05, gravity=9.81):
+    # Расчет относительного положения цели и орудия
+    rel_pos = np.array(target_pos) - np.array(own_pos)
+    height_diff = rel_pos[2]
 
-# Рассчитываем угол возвышения для дальности 2000 метров с учетом высоты и сопротивления воздуха
-print(calculate_elevation_with_air_friction(2000, 179.4, 0, 0))  # Без высот и с сопротивлением
-print(calculate_high_elevation_with_air_friction(2600, 179.4, 0, 0))  # С учетом высоты цели и сопротивления
+    # Определяем максимальную дальность при максимальном угле (45 градусов)
+    max_dist = (muzzle_velocity ** 2) / gravity  # Дальность для угла 45 градусов
+
+    # Если дальность слишком большая или маленькая для простого расчета
+    if target_dist > max_dist:
+        print("Target is too far for a simple calculation. Air resistance and other factors needed.")
+        return None
+
+    # Рассчитываем угол для данной дальности
+    angle_rad = 0.5 * np.arcsin((target_dist * gravity) / (muzzle_velocity ** 2))
+    angle_deg = np.degrees(angle_rad)
+
+    if high_angle:
+        # Используем большую высоту, если необходимо
+        return angle_deg + 45  # Ожидаем высокое положение орудия, если это применимо
+    return angle_deg
+
+
+# Пример вызова функции
+own_pos = [0, 0, 0]
+target_pos = [2000, 0, 0]
+muzzle_velocity = 153.9  # скорость снаряда, м/с
+target_dist = 2000  # Дистанция до цели в метрах
+
+angle = calculate_angle_from_distance(own_pos, target_pos, muzzle_velocity, target_dist)
+print(f"Calculated Angle: {angle} degrees")
