@@ -5,6 +5,10 @@ from PyQt5.QtWidgets import (QMainWindow, QComboBox, QLabel, QLineEdit, QPushBut
 from logic.distanceLogic import calculate_distance, calculate_azimuth
 from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation
 from mapwindow import MapWindow
+from ui.MeteoSettings import SettingsWindow
+from logic.balisticLogicAirFriction import find_optimal_angle, degrees_to_mil
+
+
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 class MainWindow(QMainWindow):
@@ -31,6 +35,9 @@ class MainWindow(QMainWindow):
 
         self.high_arc_checkbox = QCheckBox("High Arc")
 
+        self.air_friction_checkbox = QCheckBox("Air Friction")
+        self.air_friction_checkbox.stateChanged.connect(self.toggle_air_friction)
+
         self.artillery_position_label = QLabel("Artillery Position:")
         self.artillery_x = QLineEdit()
         self.artillery_x.setPlaceholderText("X")
@@ -53,8 +60,17 @@ class MainWindow(QMainWindow):
         self.map_button = QPushButton("Map")
         self.map_button.clicked.connect(self.open_map_window)
 
+        self.settings_button = QPushButton("Meteo")
+        self.settings_button.clicked.connect(self.open_meteo_settings)
+
         self.solutions_label = QLabel("Solutions:")
         self.solutions_text = QTextEdit()
+
+        self.temperature = 15.0  # default
+        self.pressure = 1013.25  # default
+        self.k_base = 1.0  # default
+
+
 
         # Layouts
         main_layout = QVBoxLayout()
@@ -75,6 +91,7 @@ class MainWindow(QMainWindow):
         charge_layout.addWidget(self.charge_label)
         charge_layout.addWidget(self.charge_combo)
         charge_layout.addWidget(self.high_arc_checkbox)
+        charge_layout.addWidget(self.air_friction_checkbox)
 
         artillery_position_layout.addWidget(self.artillery_position_label)
         artillery_position_layout.addWidget(self.artillery_x)
@@ -99,12 +116,20 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(buttons_layout)
         main_layout.addWidget(self.solutions_label)
         main_layout.addWidget(self.solutions_text)
+        buttons_layout.addWidget(self.settings_button)
 
         container = QWidget()
         container.setLayout(main_layout)
         self.setCentralWidget(container)
 
         self.update_shells()
+
+    def toggle_air_friction(self, state):
+        """Реакция на изменение состояния чекбокса"""
+        if state:
+            print("Air Friction включен")
+        else:
+            print("Air Friction выключен")
 
     def open_map_window(self):
         try:
@@ -116,7 +141,10 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.show_error(f"Error opening map window: {e}")
 
-    # mainwindow.py
+    def open_meteo_settings(self):
+        self.meteo_window = SettingsWindow(self)
+        self.meteo_window.exec_()
+
     def update_coordinates_from_map(self, artillery_coords, target_coords, artillery_h, target_h):
         try:
             if isinstance(artillery_coords, tuple):
@@ -178,6 +206,10 @@ class MainWindow(QMainWindow):
                 break
         self.update_charges()
 
+    def save_additional_settings(self, temperature, pressure):
+        self.temperature = temperature
+        self.pressure = pressure
+
     def update_charges(self):
         self.charge_combo.clear()
         selected_system = self.artillery_combo.currentText()
@@ -185,8 +217,10 @@ class MainWindow(QMainWindow):
 
         for system in self.data["artillerySystems"]:
             if system["name"] == selected_system:
+                self.k_base = abs(system["k_base"])
                 for shell in system["compatibleShells"]:
                     if shell["name"] == selected_shell:
+                        self.charge_speed = shell["chargeSpeed"]
                         for charge_name, charge_value in shell["charges"].items():
                             self.charge_combo.addItem(charge_name, charge_value)
                         return
@@ -205,23 +239,72 @@ class MainWindow(QMainWindow):
 
             selected_charge_value = self.charge_combo.currentData()
             if selected_charge_value is None:
-                raise ValueError("No charge selected")
+                raise ValueError("Заряд не выбран")
 
-            if self.high_arc_checkbox.isChecked():
-                elevation = calculate_high_elevation(distance, selected_charge_value, h1, h2)
+            charge_speed = selected_charge_value
+            elevation = None
+
+            if self.air_friction_checkbox.isChecked():
+                elevation = self.calculate_trajectory_with_air(
+                    distance,
+                    charge_speed,  # Используем скорость заряда
+                    h1,
+                    h2,
+                    self.temperature,
+                    self.pressure,
+                    self.k_base
+                )
+                if elevation is None:
+                    raise ValueError("Не удалось найти угол с учетом сопротивления воздуха")
             else:
-                elevation = calculate_elevation_with_height(distance, selected_charge_value, h1, h2)
+                # Basic calculation without air friction
+                if self.high_arc_checkbox.isChecked():
+                    elevation = calculate_high_elevation(distance, selected_charge_value, h1, h2)
+                else:
+                    elevation = calculate_elevation_with_height(distance, selected_charge_value, h1, h2)
 
             solution_text = (
-                f"Distance: {distance:.2f} m\n"
-                f"Azimuth: {azimuth:.2f} thousandths\n"
+                f"Distance: {distance:.2f} м\n"
+                f"Azimuth: {azimuth:.2f} mil\n"
                 f"Elevation: {elevation:.2f} MIL"
             )
+            if self.air_friction_checkbox.isChecked():
+                solution_text += "\n(Air Friction)"
+
             self.solutions_text.setText(solution_text)
+
         except ValueError as e:
             self.solutions_text.setText(f"Error: {e}")
         except Exception as e:
-            self.solutions_text.setText(f"An error occurred: {e}")
+            self.solutions_text.setText(f"Error: {str(e)}")
+
+    def calculate_trajectory_with_air(self, distance, v0, h1, h2, temperature, pressure, k_base):
+
+        height_diff = h2 - h1
+        try:
+            print(
+                f"[DEBUG] Settings: v0={v0}, distance={distance}, height_diff={height_diff}, T={temperature}, P={pressure}, k_base={k_base}")
+
+            angle = find_optimal_angle(
+                v0=v0,
+                distance=distance,
+                height_diff=height_diff,
+                temperature=self.temperature,
+                pressure=self.pressure,
+                k_base=self.k_base,
+                plot=False
+            )
+
+            if angle is None:
+                raise ValueError("Не вдалося знайти кут з урахуванням опору повітря")
+
+            return degrees_to_mil(angle)
+
+        except Exception as e:
+            self.show_error(f"Помилка розрахунку: {str(e)}")
+            return None
+
+
 
 def create_folders():
     base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))

@@ -4,6 +4,7 @@
             "name": "M109",
             "type": "self-propelled",
             "caliber": 155,
+            "k_base": 1.25,
             "compatibleShells": [
                 {
                     "name": "M774",
@@ -33,6 +34,7 @@
             "name": "M777",
             "type": "towed",
             "caliber": 155,
+            "k_base": 1.15,
             "compatibleShells": [
                 {
                     "name": "M982 Excalibur",
@@ -63,6 +65,7 @@
             "name": "2S3M1",
             "type": "towed",
             "caliber": 152,
+            "k_base": -6e-05,
             "compatibleShells": [
                 {
                     "name": "53-VOF-27",
@@ -97,6 +100,7 @@
             "name": "2B14 Podnos",
             "type": "Mortar",
             "caliber": 82,
+            "k_base": 1.1,
             "compatibleShells": [
                 {
                     "name": "HE",
@@ -116,6 +120,7 @@
             "name": "D-30",
             "type": "towed",
             "caliber": 122,
+            "k_base": 1.2,
             "compatibleShells": [
                 {
                     "name": "53-OF-462",
@@ -153,6 +158,7 @@
             "name": "Grap-P",
             "type": "towed",
             "caliber": 122,
+            "k_base": 1.18,
             "compatibleShells": [
                 {
                     "name": "53-OF-462",
@@ -196,5 +202,7 @@
                 }
             ]
         }
-    ]
+    ],
+    "temperature": 18.0,
+    "pressure": 1000.0
 }
