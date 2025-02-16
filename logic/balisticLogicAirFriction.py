@@ -101,9 +101,3 @@ def find_high_trajectory(v0, distance, height_diff, temperature, pressure, k_bas
 
     return best_angle
 
-high_angle = find_high_trajectory(v0=226.6, distance=3349, height_diff=-100,
-                                  temperature=14, pressure=986, k_base=k_base, plot=True)
-if high_angle is not None:
-    print(f"Оптимальный угол для высокой траектории: {high_angle:.2f}°")
-else:
-    print("Не найден подходящий угол для высокой траектории.")
