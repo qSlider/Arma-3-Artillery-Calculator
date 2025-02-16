@@ -6,7 +6,7 @@ from logic.distanceLogic import calculate_distance, calculate_azimuth
 from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation
 from mapwindow import MapWindow
 from ui.MeteoSettings import SettingsWindow
-from logic.balisticLogicAirFriction import find_optimal_angle, degrees_to_mil
+from logic.balisticLogicAirFriction import find_optimal_angle, degrees_to_mil , find_high_trajectory
 
 
 
@@ -245,19 +245,22 @@ class MainWindow(QMainWindow):
             elevation = None
 
             if self.air_friction_checkbox.isChecked():
+                # Получаем состояние High Arc
+                high_arc = self.high_arc_checkbox.isChecked()
                 elevation = self.calculate_trajectory_with_air(
                     distance,
-                    charge_speed,  # Используем скорость заряда
+                    charge_speed,
                     h1,
                     h2,
                     self.temperature,
                     self.pressure,
-                    self.k_base
+                    self.k_base,
+                    high_arc=high_arc  # Передаем флаг High Arc
                 )
                 if elevation is None:
                     raise ValueError("Не удалось найти угол с учетом сопротивления воздуха")
             else:
-                # Basic calculation without air friction
+                # Базовая логика без сопротивления воздуха
                 if self.high_arc_checkbox.isChecked():
                     elevation = calculate_high_elevation(distance, selected_charge_value, h1, h2)
                 else:
@@ -278,25 +281,34 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.solutions_text.setText(f"Error: {str(e)}")
 
-    def calculate_trajectory_with_air(self, distance, v0, h1, h2, temperature, pressure, k_base):
-
+    def calculate_trajectory_with_air(self, distance, v0, h1, h2, temperature, pressure, k_base, high_arc=False):
         height_diff = h2 - h1
         try:
-            print(
-                f"[DEBUG] Settings: v0={v0}, distance={distance}, height_diff={height_diff}, T={temperature}, P={pressure}, k_base={k_base}")
-
-            angle = find_optimal_angle(
-                v0=v0,
-                distance=distance,
-                height_diff=height_diff,
-                temperature=self.temperature,
-                pressure=self.pressure,
-                k_base=self.k_base,
-                plot=False
-            )
+            if high_arc:
+                print(f"[DEBUG] Settings hight: v0={v0}, distance={distance}, height_diff={height_diff}, T={temperature}, P={pressure}, k_base={k_base}")
+                angle = find_high_trajectory(
+                    v0=v0,
+                    distance=distance,
+                    height_diff=height_diff,
+                    temperature=temperature,
+                    pressure=pressure,
+                    k_base=k_base,
+                    plot=False
+                )
+            else:
+                print(f"[DEBUG] Settings low: v0={v0}, distance={distance}, height_diff={height_diff}, T={temperature}, P={pressure}, k_base={k_base}")
+                angle = find_optimal_angle(
+                    v0=v0,
+                    distance=distance,
+                    height_diff=height_diff,
+                    temperature=temperature,
+                    pressure=pressure,
+                    k_base=k_base,
+                    plot=False
+                )
 
             if angle is None:
-                raise ValueError("Не вдалося знайти кут з урахуванням опору повітря")
+                raise ValueError("Не удалось найти угол с учетом сопротивления воздуха")
 
             return degrees_to_mil(angle)
 
