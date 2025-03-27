@@ -134,7 +134,6 @@ class MainWindow(QMainWindow):
     def open_map_window(self):
         try:
             self.map_window = MapWindow()
-            # Подключаем отдельные сигналы
             self.map_window.artillery_coordinates_selected.connect(self.update_artillery_position)
             self.map_window.target_coordinates_selected.connect(self.update_target_position)
             self.map_window.show()
@@ -245,7 +244,6 @@ class MainWindow(QMainWindow):
             elevation = None
 
             if self.air_friction_checkbox.isChecked():
-                # Получаем состояние High Arc
                 high_arc = self.high_arc_checkbox.isChecked()
                 elevation = self.calculate_trajectory_with_air(
                     distance,
@@ -255,12 +253,11 @@ class MainWindow(QMainWindow):
                     self.temperature,
                     self.pressure,
                     self.k_base,
-                    high_arc=high_arc  # Передаем флаг High Arc
+                    high_arc=high_arc
                 )
                 if elevation is None:
                     raise ValueError("Не удалось найти угол с учетом сопротивления воздуха")
             else:
-                # Базовая логика без сопротивления воздуха
                 if self.high_arc_checkbox.isChecked():
                     elevation = calculate_high_elevation(distance, selected_charge_value, h1, h2)
                 else:

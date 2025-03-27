@@ -201,6 +201,41 @@
                     "description": "General-purpose shell for various targets."
                 }
             ]
+        },
+        {
+            "name": "2B11",
+            "type": "Mortar",
+            "caliber": 120,
+            "k_base": -6e-05,
+            "compatibleShells": [
+                {
+                    "name": "HE",
+                    "type": "HE",
+                    "caliber": 152,
+                    "chargeSpeed": 25,
+                    "charges": {
+                        "Charge 0": 117.6,
+                        "Charge 1": 154.7,
+                        "Charge 2": 177.1,
+                        "Charge 3": 203.2,
+                        "Charge 4": 222.3,
+                        "Charge 5": 239.2,
+                        "Charge 6": 265.4
+                    },
+                    "description": "HE"
+                },
+                {
+                    "name": "M795",
+                    "type": "high-explosive",
+                    "caliber": 155,
+                    "chargeSpeed": 22,
+                    "charges": {
+                        "Charge 0": 200.0,
+                        "Charge 1": 260.0
+                    },
+                    "description": "General-purpose shell for various targets."
+                }
+            ]
         }
     ],
     "temperature": 18.0,
