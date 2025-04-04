@@ -1,45 +1,38 @@
 import math
-import numpy as np
-from scipy.spatial import cKDTree
 
 
 def read_data(file_path):
-    """
-    Чтение данных из файла с координатами и высотами.
+    data = []
+    with open(file_path, 'r') as f:
+        for line in f:
+            parts = line.split()
+            x = float(parts[0])
+            y = float(parts[1])
+            height = float(parts[2])
+            data.append((x, y, height))
+    return data
 
-    Args:
-        file_path (str): Путь к файлу с данными
 
-    Returns:
-        tuple: Массивы координат и высот
-    """
-    data = np.loadtxt(file_path)
-    return data[:, :2], data[:, 2]
+def find_nearest_point(x, y, data):
+    nearest_point = None
+    min_distance = float('inf')
+
+    for (data_x, data_y, height) in data:
+        distance = math.sqrt((data_x - x) ** 2 + (data_y - y) ** 2)
+        if distance < min_distance:
+            min_distance = distance
+            nearest_point = (data_x, data_y, height)
+
+    return nearest_point
 
 
 def get_height_for_coordinates(x, y, file_path):
-    """
-    Быстрый поиск ближайшей высоты для заданных координат.
+    data = read_data(file_path)
+    nearest_point = find_nearest_point(x, y, data)
 
-    Args:
-        x (float): Координата x
-        y (float): Координата y
-        file_path (str): Путь к файлу с данными
+    if nearest_point:
+        return nearest_point[2]
+    else:
+        return None
 
-    Returns:
-        float: Высота для ближайшей точки
-    """
-    # Загрузка координат и высот
-    coords, heights = read_data(file_path)
 
-    # Построение KD-дерева
-    tree = cKDTree(coords)
-
-    # Поиск ближайшей точки
-    distance, index = tree.query([x, y])
-
-    return heights[index]
-
-# Пример использования
-height = get_height_for_coordinates(5000, 3000, file_path = "C:\\Users\\mstre\\PycharmProjects\\pythonProject6\\map\\datadata\\virolahti.txt")
-print(height)
