@@ -1,16 +1,92 @@
 import sys
-import json , os
+import json
+import os
 from PyQt5.QtWidgets import (QMainWindow, QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout,
-                             QTextEdit, QCheckBox, QMessageBox)
+                             QTextEdit, QCheckBox, QMessageBox, QDialog, QListWidget, QTableWidget, QTableWidgetItem,
+                             QHeaderView, QInputDialog)
+from PyQt5.QtCore import Qt, pyqtSignal
 from logic.distanceLogic import calculate_distance, calculate_azimuth
 from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation
 from mapwindow import MapWindow
 from ui.MeteoSettings import SettingsWindow
-from logic.balisticLogicAirFriction import find_optimal_angle, degrees_to_mil , find_high_trajectory
-
-
+from logic.balisticLogicAirFriction import find_optimal_angle, degrees_to_mil, find_high_trajectory
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+
+class SavedSolutionsWindow(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Saved Solutions")
+        self.resize(600, 400)
+        self.parent_window = parent
+
+        self.layout = QVBoxLayout()
+
+        # Create table for saved solutions
+        self.table = QTableWidget()
+        self.table.setColumnCount(7)  # Name, Artillery, Shell, Charge, Distance, Azimuth, Elevation
+        self.table.setHorizontalHeaderLabels(
+            ["Name", "Artillery", "Shell", "Charge", "Distance", "Azimuth", "Elevation"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+
+        # Fill table with saved solutions
+        self.refresh_table()
+
+        # Delete button
+        self.delete_button = QPushButton("Delete Selected")
+        self.delete_button.clicked.connect(self.delete_selected)
+
+        self.layout.addWidget(self.table)
+        self.layout.addWidget(self.delete_button)
+
+        self.setLayout(self.layout)
+
+    def refresh_table(self):
+        self.table.setRowCount(0)
+        if not self.parent_window or not hasattr(self.parent_window, 'saved_solutions'):
+            return
+
+        row = 0
+        for name, solution in self.parent_window.saved_solutions.items():
+            self.table.insertRow(row)
+            self.table.setItem(row, 0, QTableWidgetItem(name))
+            self.table.setItem(row, 1, QTableWidgetItem(solution.get("artillery", "")))
+            self.table.setItem(row, 2, QTableWidgetItem(solution.get("shell", "")))
+            self.table.setItem(row, 3, QTableWidgetItem(solution.get("charge", "")))
+            self.table.setItem(row, 4, QTableWidgetItem(solution.get("distance", "")))
+            self.table.setItem(row, 5, QTableWidgetItem(solution.get("azimuth", "")))
+            self.table.setItem(row, 6, QTableWidgetItem(solution.get("elevation", "")))
+            row += 1
+
+    def delete_selected(self):
+        selected_rows = set(index.row() for index in self.table.selectedIndexes())
+        if not selected_rows:
+            return
+
+        selected_names = [self.table.item(row, 0).text() for row in selected_rows]
+
+        reply = QMessageBox.question(
+            self, "Confirm Deletion",
+            f"Are you sure you want to delete {len(selected_names)} solution(s)?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            for name in selected_names:
+                if name in self.parent_window.saved_solutions:
+                    del self.parent_window.saved_solutions[name]
+
+            # Update the parent's saved solutions
+            self.parent_window.save_solutions_to_file()
+            self.refresh_table()
+
+    def closeEvent(self, event):
+        if hasattr(self.parent_window, 'saved_solutions_dialog'):
+            self.parent_window.saved_solutions_dialog = None
+        event.accept()
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -20,6 +96,18 @@ class MainWindow(QMainWindow):
 
         self.config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config.json')
         self.data = self.load_json(self.config_path)
+
+        # Path for saved solutions
+        self.saved_solutions_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..',
+                                                 'saved_solutions.json')
+        self.saved_solutions = {}
+        try:
+            self.saved_solutions = self.load_saved_solutions()
+        except Exception as e:
+            print(f"Error loading saved solutions: {e}")
+            self.saved_solutions = {}
+
+        self.next_solution_number = self.get_next_solution_number()
 
         self.artillery_label = QLabel("Artillery:")
         self.artillery_combo = QComboBox()
@@ -63,14 +151,24 @@ class MainWindow(QMainWindow):
         self.settings_button = QPushButton("Meteo")
         self.settings_button.clicked.connect(self.open_meteo_settings)
 
+        # New buttons for saved solutions
+        self.save_solution_button = QPushButton("Save Solution")
+        self.save_solution_button.clicked.connect(self.save_current_solution)
+        self.save_solution_button.setEnabled(False)  # Enable only after calculation
+
+        self.saved_solutions_button = QPushButton("Saved Solutions")
+        self.saved_solutions_button.clicked.connect(self.open_saved_solutions)
+
         self.solutions_label = QLabel("Solutions:")
         self.solutions_text = QTextEdit()
+        self.solutions_text.setReadOnly(True)  # Make read-only to prevent accidental editing
 
         self.temperature = 15.0  # default
         self.pressure = 1013.25  # default
         self.k_base = 1.0  # default
 
-
+        # Store current solution data
+        self.current_solution = {}
 
         # Layouts
         main_layout = QVBoxLayout()
@@ -81,6 +179,7 @@ class MainWindow(QMainWindow):
         artillery_position_layout = QVBoxLayout()
         target_position_layout = QVBoxLayout()
         buttons_layout = QHBoxLayout()
+        solutions_layout = QHBoxLayout()
 
         artillery_layout.addWidget(self.artillery_label)
         artillery_layout.addWidget(self.artillery_combo)
@@ -108,21 +207,114 @@ class MainWindow(QMainWindow):
 
         buttons_layout.addWidget(self.calculate_button)
         buttons_layout.addWidget(self.map_button)
+        buttons_layout.addWidget(self.settings_button)
+        buttons_layout.addWidget(self.save_solution_button)
+        buttons_layout.addWidget(self.saved_solutions_button)
+
+        solutions_layout.addWidget(self.solutions_label)
 
         main_layout.addLayout(artillery_layout)
         main_layout.addLayout(shell_layout)
         main_layout.addLayout(charge_layout)
         main_layout.addLayout(position_layout)
         main_layout.addLayout(buttons_layout)
-        main_layout.addWidget(self.solutions_label)
+        main_layout.addLayout(solutions_layout)
         main_layout.addWidget(self.solutions_text)
-        buttons_layout.addWidget(self.settings_button)
 
         container = QWidget()
         container.setLayout(main_layout)
         self.setCentralWidget(container)
 
         self.update_shells()
+
+    def get_next_solution_number(self):
+        """Get the next sequential solution number for auto-naming"""
+        try:
+            existing_names = [name for name in self.saved_solutions.keys()
+                              if name.startswith('P') and name[1:].isdigit()]
+
+            if not existing_names:
+                return 1
+
+            # Extract numbers from existing P1, P2, etc. names
+            existing_numbers = [int(name[1:]) for name in existing_names]
+            if existing_numbers:
+                return max(existing_numbers) + 1
+            else:
+                return 1
+        except Exception as e:
+            print(f"Error getting next solution number: {e}")
+            return 1
+
+    def load_saved_solutions(self):
+        """Load saved solutions from file"""
+        try:
+            if os.path.exists(self.saved_solutions_path):
+                with open(self.saved_solutions_path, 'r') as file:
+                    return json.load(file)
+            return {}
+        except Exception as e:
+            print(f"Error loading saved solutions: {e}")
+            return {}
+
+    def save_solutions_to_file(self):
+        """Save solutions to file"""
+        try:
+            directory = os.path.dirname(self.saved_solutions_path)
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+
+            with open(self.saved_solutions_path, 'w') as file:
+                json.dump(self.saved_solutions, file, indent=4)
+        except Exception as e:
+            print(f"Error saving solutions: {e}")
+            QMessageBox.warning(self, "Warning", f"Could not save solutions: {e}")
+
+    def save_current_solution(self):
+        """Save the current solution with a name"""
+        if not self.current_solution:
+            QMessageBox.warning(self, "Warning", "No solution to save. Calculate first.")
+            return
+
+        try:
+            # Get a name for the solution
+            name, ok = QInputDialog.getText(
+                self, "Save Solution",
+                "Enter a name for this solution (leave empty for auto-naming):"
+            )
+
+            if not ok:
+                return  # User canceled
+
+            # If empty, generate automatic name
+            if not name:
+                name = f"P{self.next_solution_number}"
+                self.next_solution_number += 1
+
+            # If name already exists, append a number
+            original_name = name
+            counter = 1
+            while name in self.saved_solutions:
+                name = f"{original_name}_{counter}"
+                counter += 1
+
+            # Save the solution
+            self.saved_solutions[name] = self.current_solution.copy()
+            self.save_solutions_to_file()
+
+            QMessageBox.information(
+                self, "Solution Saved",
+                f"Solution saved as '{name}'."
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to save solution: {e}")
+
+    def open_saved_solutions(self):
+        try:
+            self.saved_solutions_dialog = SavedSolutionsWindow(self)
+            self.saved_solutions_dialog.show()
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not open saved solutions: {e}")
 
     def toggle_air_friction(self, state):
         """Реакция на изменение состояния чекбокса"""
@@ -141,8 +333,11 @@ class MainWindow(QMainWindow):
             self.show_error(f"Error opening map window: {e}")
 
     def open_meteo_settings(self):
-        self.meteo_window = SettingsWindow(self)
-        self.meteo_window.exec_()
+        try:
+            self.meteo_window = SettingsWindow(self)
+            self.meteo_window.exec_()
+        except Exception as e:
+            self.show_error(f"Error opening meteo settings: {e}")
 
     def update_coordinates_from_map(self, artillery_coords, target_coords, artillery_h, target_h):
         try:
@@ -196,42 +391,61 @@ class MainWindow(QMainWindow):
             return {"artillerySystems": []}
 
     def update_shells(self):
-        self.shell_combo.clear()
-        selected_artillery = self.artillery_combo.currentText()
-        for system in self.data.get("artillerySystems", []):
-            if system["name"] == selected_artillery:
-                shells = system.get("compatibleShells", [])
-                self.shell_combo.addItems([shell["name"] for shell in shells])
-                break
-        self.update_charges()
+        try:
+            self.shell_combo.clear()
+            selected_artillery = self.artillery_combo.currentText()
+            for system in self.data.get("artillerySystems", []):
+                if system["name"] == selected_artillery:
+                    shells = system.get("compatibleShells", [])
+                    self.shell_combo.addItems([shell["name"] for shell in shells])
+                    break
+            self.update_charges()
+        except Exception as e:
+            print(f"Error updating shells: {e}")
 
     def save_additional_settings(self, temperature, pressure):
         self.temperature = temperature
         self.pressure = pressure
 
     def update_charges(self):
-        self.charge_combo.clear()
-        selected_system = self.artillery_combo.currentText()
-        selected_shell = self.shell_combo.currentText()
+        try:
+            self.charge_combo.clear()
+            selected_system = self.artillery_combo.currentText()
+            selected_shell = self.shell_combo.currentText()
 
-        for system in self.data["artillerySystems"]:
-            if system["name"] == selected_system:
-                self.k_base = abs(system["k_base"])
-                for shell in system["compatibleShells"]:
-                    if shell["name"] == selected_shell:
-                        self.charge_speed = shell["chargeSpeed"]
-                        for charge_name, charge_value in shell["charges"].items():
-                            self.charge_combo.addItem(charge_name, charge_value)
-                        return
+            for system in self.data.get("artillerySystems", []):
+                if system["name"] == selected_system:
+                    self.k_base = abs(system.get("k_base", 1.0))
+                    for shell in system.get("compatibleShells", []):
+                        if shell["name"] == selected_shell:
+                            self.charge_speed = shell.get("chargeSpeed", 0)
+                            for charge_name, charge_value in shell.get("charges", {}).items():
+                                self.charge_combo.addItem(charge_name, charge_value)
+                            return
+        except Exception as e:
+            print(f"Error updating charges: {e}")
 
     def calculate_solution(self):
         try:
-            x1 = float(self.artillery_x.text())
-            y1 = float(self.artillery_y.text())
-            h1 = float(self.artillery_h.text())
-            x2 = float(self.target_x.text())
-            y2 = float(self.target_y.text())
-            h2 = float(self.target_h.text())
+            # Reset save button
+            self.save_solution_button.setEnabled(False)
+
+            # Validate input fields
+            if not all([self.artillery_x.text(), self.artillery_y.text(), self.artillery_h.text(),
+                        self.target_x.text(), self.target_y.text(), self.target_h.text()]):
+                self.solutions_text.setText("Error: All position fields must be filled")
+                return
+
+            try:
+                x1 = float(self.artillery_x.text())
+                y1 = float(self.artillery_y.text())
+                h1 = float(self.artillery_h.text())
+                x2 = float(self.target_x.text())
+                y2 = float(self.target_y.text())
+                h2 = float(self.target_h.text())
+            except ValueError:
+                self.solutions_text.setText("Error: Position coordinates must be valid numbers")
+                return
 
             distance = calculate_distance(x1, y1, x2, y2)
             azimuth = calculate_azimuth(x1, y1, x2, y2)
@@ -273,16 +487,44 @@ class MainWindow(QMainWindow):
 
             self.solutions_text.setText(solution_text)
 
+            # Store solution details for saving
+            self.current_solution = {
+                "artillery": self.artillery_combo.currentText(),
+                "shell": self.shell_combo.currentText(),
+                "charge": self.charge_combo.currentText(),
+                "distance": f"{distance:.2f} м",
+                "azimuth": f"{azimuth:.2f} mil",
+                "elevation": f"{elevation:.2f} MIL",
+                "with_air_friction": self.air_friction_checkbox.isChecked(),
+                "high_arc": self.high_arc_checkbox.isChecked(),
+                "artillery_position": {
+                    "x": x1,
+                    "y": y1,
+                    "h": h1
+                },
+                "target_position": {
+                    "x": x2,
+                    "y": y2,
+                    "h": h2
+                }
+            }
+
+            # Enable save button after calculation
+            self.save_solution_button.setEnabled(True)
+
         except ValueError as e:
             self.solutions_text.setText(f"Error: {e}")
+            self.save_solution_button.setEnabled(False)
         except Exception as e:
             self.solutions_text.setText(f"Error: {str(e)}")
+            self.save_solution_button.setEnabled(False)
 
     def calculate_trajectory_with_air(self, distance, v0, h1, h2, temperature, pressure, k_base, high_arc=False):
         height_diff = h2 - h1
         try:
             if high_arc:
-                print(f"[DEBUG] Settings hight: v0={v0}, distance={distance}, height_diff={height_diff}, T={temperature}, P={pressure}, k_base={k_base}")
+                print(
+                    f"[DEBUG] Settings hight: v0={v0}, distance={distance}, height_diff={height_diff}, T={temperature}, P={pressure}, k_base={k_base}")
                 angle = find_high_trajectory(
                     v0=v0,
                     distance=distance,
@@ -293,7 +535,8 @@ class MainWindow(QMainWindow):
                     plot=False
                 )
             else:
-                print(f"[DEBUG] Settings low: v0={v0}, distance={distance}, height_diff={height_diff}, T={temperature}, P={pressure}, k_base={k_base}")
+                print(
+                    f"[DEBUG] Settings low: v0={v0}, distance={distance}, height_diff={height_diff}, T={temperature}, P={pressure}, k_base={k_base}")
                 angle = find_optimal_angle(
                     v0=v0,
                     distance=distance,
@@ -314,25 +557,34 @@ class MainWindow(QMainWindow):
             return None
 
 
-
 def create_folders():
-    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    folders = [
-        os.path.join(base_dir, "map", "data"),
-        os.path.join(base_dir, "map", "img")
-    ]
-    for folder in folders:
-        os.makedirs(folder, exist_ok=True)
+    try:
+        base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+        folders = [
+            os.path.join(base_dir, "map", "data"),
+            os.path.join(base_dir, "map", "img")
+        ]
+        for folder in folders:
+            os.makedirs(folder, exist_ok=True)
+    except Exception as e:
+        print(f"Error creating folders: {e}")
 
 
 if __name__ == "__main__":
-    create_folders()
-    import sys
-    from PyQt5.QtWidgets import QApplication
+    try:
+        create_folders()
+        import sys
+        from PyQt5.QtWidgets import QApplication
 
-    app = QApplication(sys.argv)
+        app = QApplication(sys.argv)
 
-    window = MainWindow()
-    window.show()
+        window = MainWindow()
+        window.show()
 
-    sys.exit(app.exec_())
+        sys.exit(app.exec_())
+    except Exception as e:
+        print(f"Critical error: {e}")
+        # In case of critical error, show a message box
+        if 'app' in locals():
+            QMessageBox.critical(None, "Critical Error",
+                                 f"The application encountered a critical error and needs to close: {e}")

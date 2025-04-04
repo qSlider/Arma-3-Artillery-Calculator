@@ -1,45 +1,246 @@
 import os
-
+import math
 from PyQt5.QtWidgets import (
     QMainWindow, QGraphicsView, QGraphicsScene, QVBoxLayout, QWidget, QComboBox, QLabel, QPushButton, QHBoxLayout,
-    QMessageBox, QLineEdit
+    QMessageBox, QLineEdit, QGraphicsItem, QGraphicsRectItem
 )
-from PyQt5.QtGui import QPixmap, QPainter, QBrush, QCursor
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QPixmap, QPainter, QBrush, QCursor, QTransform, QColor
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QRectF, QPointF
 from PyQt5.QtWidgets import QGraphicsEllipseItem
 from logic.heightsLogic import get_height_for_coordinates
-from PyQt5.QtSvg import QGraphicsSvgItem
+from PyQt5.QtSvg import QGraphicsSvgItem, QSvgRenderer
 
 
-def svg_map_loader(map_dir, map_files):
-    for map_file in map_files:
-        map_path = os.path.join(map_dir, map_file)
-        yield map_path
+class SvgTile(QGraphicsSvgItem):
+    """Custom SVG tile class to handle parts of a larger SVG"""
+
+    def __init__(self, file_path, viewbox_rect):
+        super().__init__()
+        self.file_path = file_path
+        self.viewbox_rect = viewbox_rect
+
+        # Create renderer with clipping viewport
+        self.custom_renderer = QSvgRenderer(file_path)
+        self.custom_renderer.setViewBox(viewbox_rect)
+        self.setSharedRenderer(self.custom_renderer)
+
+        # Position the tile at its correct position in the overall map
+        self.setPos(viewbox_rect.x(), viewbox_rect.y())
 
 
-class MapView(QGraphicsView):
+class TiledMapView(QGraphicsView):
     point_added = pyqtSignal(str, float, float)
 
     def __init__(self, scene):
         super().__init__(scene)
         self.setRenderHint(QPainter.SmoothPixmapTransform)
         self.setRenderHint(QPainter.Antialiasing)
+
+        # Scale factors and limits
         self.scale_factor = 1.0
-        self.min_scale = 0.1
+        self.min_scale = 0.01  # Lower min scale for large maps
         self.max_scale = 30.0
+
+        # Mouse interaction vars
         self.dragging = False
         self.last_mouse_position = None
         self.current_markers = {}
         self.selected_point_type = None
 
+        # Tile management
+        self.tile_size = 1000  # Size of each tile in SVG units
+        self.loaded_tiles = {}  # Keep track of loaded tiles
+        self.full_svg_size = (0, 0)  # Will be set when loading map
+        self.svg_path = None
+        self.visible_tiles = set()
+
+        # Set less frequent tile updates to avoid stack overflow
+        self.tile_load_timer = QTimer(self)
+        self.tile_load_timer.setSingleShot(True)
+        self.tile_load_timer.timeout.connect(self.update_visible_tiles)
+
+        # Viewport change tracking
+        self.viewport_update_pending = False
+
+        # For PNG/JPG maps
+        self.using_raster_map = False
+        self.raster_map_item = None
+
+    def resizeEvent(self, event):
+        """Handle resize events to update tiles"""
+        super().resizeEvent(event)
+        self.schedule_tile_update()
+
+    def schedule_tile_update(self):
+        """Schedule a tile update with a delay to avoid too many updates"""
+        if not self.viewport_update_pending and not self.using_raster_map:
+            self.viewport_update_pending = True
+            self.tile_load_timer.start(200)  # 200ms delay
+
+    def load_svg_map(self, svg_path):
+        """Load a SVG map and prepare it for tiled rendering"""
+        self.svg_path = svg_path
+        self.loaded_tiles.clear()
+        self.scene().clear()
+        self.using_raster_map = False
+
+        # Get the full size of the SVG
+        temp_renderer = QSvgRenderer(svg_path)
+        if not temp_renderer.isValid():
+            print(f"Error: Unable to load SVG {svg_path}")
+            return False
+
+        viewbox = temp_renderer.viewBox()
+        self.full_svg_size = (viewbox.width(), viewbox.height())
+        print(f"Full SVG size: {self.full_svg_size}")
+
+        # Create a placeholder rectangle to define the scene bounds
+        placeholder = QGraphicsRectItem(0, 0, self.full_svg_size[0], self.full_svg_size[1])
+        placeholder.setPen(Qt.NoPen)
+        placeholder.setBrush(Qt.NoBrush)
+        self.scene().addItem(placeholder)
+
+        # Set the proper bounding rect for the scene
+        self.scene().setSceneRect(0, 0, self.full_svg_size[0], self.full_svg_size[1])
+
+        # Initial tiles load for the current viewport
+        self.schedule_tile_update()
+        return True
+
+    def load_raster_map(self, pixmap_path):
+        """Load a regular PNG/JPG map"""
+        self.using_raster_map = True
+        self.svg_path = None
+        self.loaded_tiles.clear()
+        self.scene().clear()
+
+        # Stop tile timer if running
+        self.tile_load_timer.stop()
+        self.viewport_update_pending = False
+
+        # Load the pixmap
+        pixmap = QPixmap(pixmap_path)
+        if pixmap.isNull():
+            return False
+
+        # Add to scene
+        self.raster_map_item = self.scene().addPixmap(pixmap)
+        self.scene().setSceneRect(pixmap.rect())
+
+        return True
+
+    def update_visible_tiles(self):
+        """Update which tiles are visible and load/unload as needed"""
+        self.viewport_update_pending = False
+
+        if not self.svg_path or self.using_raster_map:
+            return
+
+        # Get the current viewport in scene coordinates
+        viewport_rect = self.mapToScene(self.viewport().rect()).boundingRect()
+
+        # Add a safety margin for smoother scrolling
+        margin = self.tile_size
+        viewport_rect = viewport_rect.adjusted(-margin, -margin, margin, margin)
+
+        # Calculate which tiles intersect with the viewport
+        start_x = max(0, math.floor(viewport_rect.left() / self.tile_size))
+        start_y = max(0, math.floor(viewport_rect.top() / self.tile_size))
+        end_x = min(math.ceil(self.full_svg_size[0] / self.tile_size),
+                    math.ceil(viewport_rect.right() / self.tile_size))
+        end_y = min(math.ceil(self.full_svg_size[1] / self.tile_size),
+                    math.ceil(viewport_rect.bottom() / self.tile_size))
+
+        # Set a limit on how many tiles to load at once to prevent stack overflow
+        max_tiles_to_load = 25  # Adjust based on your system capabilities
+
+        # Calculate visible tiles
+        new_visible_tiles = set()
+        tiles_loaded_this_batch = 0
+
+        for x in range(start_x, end_x):
+            for y in range(start_y, end_y):
+                tile_key = (x, y)
+                new_visible_tiles.add(tile_key)
+
+                # Load any tiles not already loaded, up to the limit
+                if tile_key not in self.loaded_tiles and tiles_loaded_this_batch < max_tiles_to_load:
+                    self.load_tile(x, y)
+                    tiles_loaded_this_batch += 1
+
+        # If we hit the limit, schedule another update soon
+        if tiles_loaded_this_batch >= max_tiles_to_load:
+            self.schedule_tile_update()
+            return
+
+        # Remove tiles that are no longer visible (with some buffer to reduce frequent load/unload)
+        tiles_to_remove = set()
+        for tile_key in self.loaded_tiles.keys():
+            if tile_key not in new_visible_tiles:
+                # Keep a buffer of tiles around the viewport
+                tx, ty = tile_key
+                if (tx < start_x - 2 or tx > end_x + 2 or
+                        ty < start_y - 2 or ty > end_y + 2):
+                    tiles_to_remove.add(tile_key)
+
+        for tile_key in tiles_to_remove:
+            if tile_key in self.loaded_tiles:
+                tile_item = self.loaded_tiles[tile_key]
+                if tile_item in self.scene().items():
+                    self.scene().removeItem(tile_item)
+                del self.loaded_tiles[tile_key]
+
+        self.visible_tiles = new_visible_tiles
+
+    def load_tile(self, tile_x, tile_y):
+        """Load a specific tile from the SVG"""
+        # Skip if outside bounds
+        if (tile_x < 0 or tile_y < 0 or
+                tile_x * self.tile_size >= self.full_svg_size[0] or
+                tile_y * self.tile_size >= self.full_svg_size[1]):
+            return
+
+        # Calculate tile boundaries in SVG coordinates
+        x_start = tile_x * self.tile_size
+        y_start = tile_y * self.tile_size
+        width = min(self.tile_size, self.full_svg_size[0] - x_start)
+        height = min(self.tile_size, self.full_svg_size[1] - y_start)
+
+        # Create the viewbox for this tile
+        viewbox = QRectF(x_start, y_start, width, height)
+
+        try:
+            # Create the tile
+            tile = SvgTile(self.svg_path, viewbox)
+
+            # Add to scene and track it
+            self.scene().addItem(tile)
+            self.loaded_tiles[(tile_x, tile_y)] = tile
+        except Exception as e:
+            print(f"Error loading tile ({tile_x}, {tile_y}): {e}")
+
     def wheelEvent(self, event):
-        zoom_in_factor = 1.25
-        zoom_out_factor = 0.8
+        # Store the scene position where the mouse is
+        old_pos = self.mapToScene(event.pos())
+
+        # Calculate zoom factor
+        zoom_in_factor = 1.2
+        zoom_out_factor = 1.0 / zoom_in_factor
         zoom_factor = zoom_in_factor if event.angleDelta().y() > 0 else zoom_out_factor
+
+        # Apply zoom limits
         new_scale = self.scale_factor * zoom_factor
         if self.min_scale <= new_scale <= self.max_scale:
-            self.scale(zoom_factor, zoom_factor)
             self.scale_factor = new_scale
+            self.scale(zoom_factor, zoom_factor)
+
+            # Adjust viewport to keep mouse position stable
+            new_pos = self.mapToScene(event.pos())
+            delta = new_pos - old_pos
+            self.translate(delta.x(), delta.y())
+
+            # Schedule tile update
+            self.schedule_tile_update()
         else:
             event.ignore()
 
@@ -58,14 +259,23 @@ class MapView(QGraphicsView):
         if self.dragging:
             delta = event.pos() - self.last_mouse_position
             self.last_mouse_position = event.pos()
+
+            # Update scrollbars
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+
+            # Schedule tile update
+            self.schedule_tile_update()
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.dragging = False
             self.setCursor(Qt.ArrowCursor)
+
+            # Make sure tiles are updated after dragging stops
+            if not self.using_raster_map:
+                self.schedule_tile_update()
         super().mouseReleaseEvent(event)
 
     def add_point(self, point_type):
@@ -79,6 +289,7 @@ class MapView(QGraphicsView):
         circle = QGraphicsEllipseItem(-5, -5, 10, 10)
         circle.setBrush(QBrush(color))
         circle.setPos(x, y)
+        circle.setZValue(1000)  # Ensure the marker is displayed on top of tiles
         self.scene().addItem(circle)
 
         self.current_markers[point_type] = circle
@@ -91,18 +302,17 @@ class MapWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.current_map_height = 0  # Переименовано для общей логики
-        self.current_map_item = None  # Для хранения текущего элемента карты
-        self.current_pixmap_height = 0
-        self.setWindowTitle("Map Viewer")
-        self.resize(800, 600)
+        self.current_map_height = 0
+        self.setWindowTitle("Tiled Map Viewer")
+        self.resize(1000, 800)
 
         self.map_label = QLabel("Select Map:")
         self.map_selector = QComboBox()
         self.map_selector.currentIndexChanged.connect(self.load_map)
 
         self.scene = QGraphicsScene()
-        self.map_view = MapView(self.scene)
+        # Use our tiled map view
+        self.map_view = TiledMapView(self.scene)
         self.map_view.point_added.connect(self.handle_point_added)
 
         self.artillery_button = QPushButton("Add Artillery")
@@ -131,6 +341,10 @@ class MapWindow(QMainWindow):
         layout.addLayout(button_layout)
         layout.addWidget(self.map_view)
 
+        # Status label for debugging
+        self.status_label = QLabel("Ready")
+        layout.addWidget(self.status_label)
+
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
@@ -149,7 +363,6 @@ class MapWindow(QMainWindow):
             print(f"Directory {self.map_dir} does not exist!")
             return
 
-        # Добавляем фильтр для .svg файлов
         map_files = [f for f in os.listdir(self.map_dir) if f.lower().endswith(('.png', '.jpg', '.svg'))]
 
         if map_files:
@@ -163,95 +376,109 @@ class MapWindow(QMainWindow):
         if index < 0 or self.map_selector.count() == 0:
             return
 
-        map_name = self.map_selector.currentText()
-        map_path = os.path.join(self.map_dir, map_name)
-        ext = os.path.splitext(map_name)[1].lower()
+        try:
+            map_name = self.map_selector.currentText()
+            map_path = os.path.join(self.map_dir, map_name)
+            ext = os.path.splitext(map_name)[1].lower()
 
-        if os.path.exists(map_path):
-            if ext == '.svg':
-                self.display_svg(map_path)
+            if os.path.exists(map_path):
+                self.status_label.setText(f"Loading {map_name}...")
+                QApplication.processEvents()  # Update UI
+
+                if ext == '.svg':
+                    self.display_svg_tiled(map_path)
+                else:
+                    self.display_raster(map_path)
+
+                self.status_label.setText(f"Loaded {map_name}")
             else:
-                self.display_raster(map_path)
-        else:
-            self.display_error("Map file does not exist.")
+                self.display_error("Map file does not exist.")
+        except Exception as e:
+            self.display_error(f"Error loading map: {str(e)}")
+            print(f"Error details: {e}")
 
-    def display_raster(self, path):
-        """Отображение растровых изображений (PNG, JPG)"""
-        pixmap = QPixmap(path)
-        if pixmap.isNull():
-            self.display_error("Failed to load raster image.")
-            return
+    def display_svg_tiled(self, path):
+        """Display SVG using the tiled approach"""
+        # Clear the scene and reset the view
+        self.map_view.resetTransform()
 
-        self.scene.clear()
-        self.current_map_item = self.scene.addPixmap(pixmap)
-        self.current_map_height = pixmap.height()
-        self.reset_and_fit()
-
-    def display_svg(self, path):
-        """Отображение SVG изображений"""
-        svg_item = QGraphicsSvgItem(path)
-        if not svg_item.renderer().isValid():
+        # Get the SVG's full dimensions for reference
+        temp_renderer = QSvgRenderer(path)
+        if not temp_renderer.isValid():
             self.display_error("Failed to load SVG image.")
             return
 
-        self.scene.clear()
-        self.current_map_item = svg_item
-        self.scene.addItem(svg_item)
+        viewbox = temp_renderer.viewBox()
+        self.current_map_height = viewbox.height()
 
-        # Получаем размеры из viewBox SVG
-        viewbox = svg_item.renderer().viewBox()
-        self.current_map_height = viewbox.height() if not viewbox.isEmpty() else 0
+        # Load the tiled SVG
+        success = self.map_view.load_svg_map(path)
+        if not success:
+            self.display_error("Failed to prepare tiled SVG map.")
+            return
 
-        self.reset_and_fit()
+        # Fit the map in view
+        self.fitMapInView()
 
-    def reset_and_fit(self):
-        """Общая функция для сброса масштаба и подгонки размера"""
-        self.reset_zoom()
-        if self.current_map_item:
-            QTimer.singleShot(150, lambda: self.map_view.fitInView(
-                self.current_map_item.boundingRect(),
-                Qt.KeepAspectRatio
-            ))
+    def display_raster(self, path):
+        """Display regular raster images"""
+        # Stop the tile-based rendering and use regular pixmap
+        success = self.map_view.load_raster_map(path)
+        if not success:
+            self.display_error("Failed to load raster image.")
+            return
 
-    def reset_zoom(self):
+        # Get pixmap height for coordinate conversion
+        pixmap = QPixmap(path)
+        self.current_map_height = pixmap.height()
+
+        # Fit in view
+        self.fitMapInView()
+
+    def fitMapInView(self):
+        """Adjust view to fit the map"""
         self.map_view.resetTransform()
         self.map_view.scale_factor = 1.0
 
-    def display_map(self, pixmap):
-        self.scene.clear()
-        self.reset_zoom()
-        self.scene.addPixmap(pixmap)
-        self.map_view.setScene(self.scene)
-        self.scene.update()
-        self.current_pixmap_height = pixmap.height()  # Сохраняем высоту карты
-        QTimer.singleShot(150, lambda: self.map_view.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio))
+        # Fit to scene rect
+        QTimer.singleShot(100, lambda: self.map_view.fitInView(
+            self.scene.sceneRect(),
+            Qt.KeepAspectRatio
+        ))
+
+    def display_error(self, message):
+        self.status_label.setText(f"Error: {message}")
+        QMessageBox.critical(self, "Error", message)
 
     def handle_point_added(self, point_type, x, y):
-        corrected_y = self.current_map_height - y
-        map_name = os.path.splitext(self.map_selector.currentText())[0]
-        height_file = os.path.join(self.data_dir, f"{map_name}.txt")
+        try:
+            corrected_y = self.current_map_height - y
+            map_name = os.path.splitext(self.map_selector.currentText())[0]
+            height_file = os.path.join(self.data_dir, f"{map_name}.txt")
 
-        if not os.path.exists(height_file):
-            print(f"Height file {height_file} not found!")
-            return
+            if not os.path.exists(height_file):
+                print(f"Height file {height_file} not found!")
+                height = 0
+            else:
+                height = get_height_for_coordinates(x, corrected_y, height_file)
 
-        height = get_height_for_coordinates(x, corrected_y, height_file)
+            if point_type == "Artillery":
+                self.artillery_coords = (x, corrected_y)
+                self.artillery_height = height
+                self.artillery_coordinates_selected.emit(self.artillery_coords, self.artillery_height)
+                self.status_label.setText(f"Artillery set at ({x:.1f}, {corrected_y:.1f}), height: {height}")
 
-        if point_type == "Artillery":
-            self.artillery_coords = (x, corrected_y)
-            self.artillery_height = height
-            self.artillery_coordinates_selected.emit(self.artillery_coords, self.artillery_height)
+            elif point_type == "Target":
+                self.target_coords = (x, corrected_y)
+                self.target_height = height
+                self.target_coordinates_selected.emit(self.target_coords, self.target_height)
+                self.status_label.setText(f"Target set at ({x:.1f}, {corrected_y:.1f}), height: {height}")
 
-        elif point_type == "Target":
-            self.target_coords = (x, corrected_y)
-            self.target_height = height
-            self.target_coordinates_selected.emit(self.target_coords, self.target_height)
+        except Exception as e:
+            self.status_label.setText(f"Error adding point: {str(e)}")
+            print(f"Point addition error: {e}")
 
-    def emit_coordinates(self, x, y):
-        self.coordinates_selected.emit({'x': x, 'y': y})
 
-    def get_coordinates(self):
-        return {'x': 100, 'y': 200}
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -290,27 +517,15 @@ class MainWindow(QMainWindow):
     def open_map_window(self):
         if not self.map_window:
             self.map_window = MapWindow()
-            self.map_window.coordinates_selected.connect(self.update_coordinates)
+            self.map_window.artillery_coordinates_selected.connect(self.update_artillery_coordinates)
+            self.map_window.target_coordinates_selected.connect(self.update_target_coordinates)
         self.map_window.show()
 
-    def update_coordinates(self, artillery_coords, target_coords):
-        # Артиллерия — обновляем только если изменилось
-        if (self.artillery_x.text() != f"{artillery_coords[0]:.2f}" or
-                self.artillery_y.text() != f"{artillery_coords[1]:.2f}"):
-            self.artillery_x.setText(f"{artillery_coords[0]:.2f}")
-            self.artillery_y.setText(f"{artillery_coords[1]:.2f}")
-
-        # Цель — обновляем всегда
-        self.target_x.setText(f"{target_coords[0]:.2f}")
-        self.target_y.setText(f"{target_coords[1]:.2f}")
-
-    def update_artillery_coordinates(self, artillery_coords):
-        """Обновляет только координаты артиллерии."""
+    def update_artillery_coordinates(self, artillery_coords, height):
         self.artillery_x.setText(f"{artillery_coords[0]:.2f}")
         self.artillery_y.setText(f"{artillery_coords[1]:.2f}")
 
-    def update_target_coordinates(self, target_coords):
-        """Обновляет только координаты цели."""
+    def update_target_coordinates(self, target_coords, height):
         self.target_x.setText(f"{target_coords[0]:.2f}")
         self.target_y.setText(f"{target_coords[1]:.2f}")
 
