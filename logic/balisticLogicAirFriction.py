@@ -83,11 +83,11 @@ def find_optimal_angle(v0, distance, height_diff, temperature, pressure, k_base,
             optimal_angle = angle
             if plot:
                 plt.figure(figsize=(10, 5))
-                plt.plot(trajectory[:, 0], trajectory[:, 1], label=f"Угол: {angle:.2f}°")
-                plt.scatter(distance, height_diff, color='red', label='Цель')
-                plt.xlabel("Дистанция (м)")
-                plt.ylabel("Высота (м)")
-                plt.title("Траектория снаряда")
+                plt.plot(trajectory[:, 0], trajectory[:, 1], label=f"Angle: {angle:.2f}°")
+                plt.scatter(distance, height_diff, color='red', label='Target')
+                plt.xlabel("Distance (m)")
+                plt.ylabel("Height (m)")
+                plt.title("The trajectory of the shell")
                 plt.legend()
                 plt.grid()
                 plt.savefig("trajectory_plot.png")

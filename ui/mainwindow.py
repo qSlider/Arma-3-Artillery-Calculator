@@ -317,7 +317,6 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", f"Could not open saved solutions: {e}")
 
     def toggle_air_friction(self, state):
-        """Реакция на изменение состояния чекбокса"""
         if state:
             print("Air Friction включен")
         else:
@@ -584,7 +583,6 @@ if __name__ == "__main__":
         sys.exit(app.exec_())
     except Exception as e:
         print(f"Critical error: {e}")
-        # In case of critical error, show a message box
         if 'app' in locals():
             QMessageBox.critical(None, "Critical Error",
                                  f"The application encountered a critical error and needs to close: {e}")
