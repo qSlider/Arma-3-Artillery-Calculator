@@ -1,5 +1,7 @@
-How to use?
+
 ![Artillery callculator](https://github.com/qSlider/Arma-3-Artillery-Callculator/blob/master/image2.png)
+
+How to use?
 You may set positions either by manual input or via points on the map.
 If you use Air Friction do not forget to enter Meteo or you will get bad results.
 You may save and delete results, also they are saved if you close the program.
