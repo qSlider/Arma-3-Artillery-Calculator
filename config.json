@@ -155,6 +155,28 @@
             ]
         },
         {
+            "name": "D-20",
+            "type": "towed",
+            "caliber": 152,
+            "k_base": -6e-05,
+            "compatibleShells": [
+                {
+                    "name": "HE",
+                    "type": "HE",
+                    "caliber": 152,
+                    "chargeSpeed": 3,
+                    "charges": {
+                        "Charge 0": 104.5,
+                        "Charge 1": 165,
+                        "Charge 2": 264,
+                        "Charge 3": 440,
+                        "Charge 4": 550
+                    },
+                    "description": "HE"
+                }
+            ]
+        },
+        {
             "name": "Grap-P",
             "type": "towed",
             "caliber": 122,
