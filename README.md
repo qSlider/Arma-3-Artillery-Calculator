@@ -48,7 +48,7 @@ You may **save** and **delete** results; they are also saved if you close the pr
     };
     ```
 5. The height data file is usually saved in `C:\arma3\terrain` and renamed to match the map name.
-6. Convert the `.svg` map to `.png` using tools such as:
+6. Convert the `.png` map to `.png` using tools such as:
    - **GIMP 2**
    - **ImageMagick**
 7. Place the `.svg` file in the `map/img` folder.  
