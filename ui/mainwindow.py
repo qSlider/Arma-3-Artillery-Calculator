@@ -4,8 +4,8 @@ import os
 from PyQt5.QtWidgets import (QMainWindow, QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout,
                              QTextEdit, QCheckBox, QMessageBox, QInputDialog)
 from PyQt5.QtCore import Qt
-from logic.distanceLogic import calculate_distance, calculate_azimuth
-from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation
+from logic.distanceLogic import calculate_distance, calculate_azimuth , calculate_mils
+from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation , mil_to_rad , calculate_range , range_difference_for_1mil
 from mapwindow import MapWindow
 from ui.MeteoSettings import SettingsWindow
 from logic.balisticLogicAirFriction import find_optimal_angle, degrees_to_mil, find_high_trajectory
@@ -375,6 +375,7 @@ class MainWindow(QMainWindow):
 
             distance = calculate_distance(x1, y1, x2, y2)
             azimuth = calculate_azimuth(x1, y1, x2, y2)
+            mils = calculate_mils(distance)
 
             selected_charge_value = self.charge_combo.currentData()
             if selected_charge_value is None:
@@ -397,17 +398,23 @@ class MainWindow(QMainWindow):
                 )
                 if elevation is None:
                     raise ValueError("Не удалось найти угол с учетом сопротивления воздуха")
+                mils_delta = None
             else:
                 if self.high_arc_checkbox.isChecked():
                     elevation = calculate_high_elevation(distance, selected_charge_value, h1, h2)
                 else:
                     elevation = calculate_elevation_with_height(distance, selected_charge_value, h1, h2)
 
+                mils_delta = range_difference_for_1mil(selected_charge_value, elevation, h1, h2)
+
             solution_text = (
                 f"Distance: {distance:.2f} м\n"
                 f"Azimuth: {azimuth:.2f} mil\n"
-                f"Elevation: {elevation:.2f} MIL"
+                f"Elevation: {elevation:.2f} MIL\n"
+                f"Deviation (1 mil): {mils:.2f} м\n"
+                f"ΔDeviation in range(1 mil): {mils_delta:.2f} м"
             )
+
             if self.air_friction_checkbox.isChecked():
                 solution_text += "\n(Air Friction)"
 
@@ -421,6 +428,8 @@ class MainWindow(QMainWindow):
                 "distance": f"{distance:.2f} м",
                 "azimuth": f"{azimuth:.2f} mil",
                 "elevation": f"{elevation:.2f} MIL",
+                "deviation(1 mil)": f"{mils:.2f} м",
+                "Δdeviation(1 mil)": f"{mils_delta:.2f} м",
                 "with_air_friction": self.air_friction_checkbox.isChecked(),
                 "high_arc": self.high_arc_checkbox.isChecked(),
                 "artillery_position": {

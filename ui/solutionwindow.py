@@ -16,9 +16,9 @@ class SavedSolutionsWindow(QDialog):
 
         # Create table for saved solutions
         self.table = QTableWidget()
-        self.table.setColumnCount(7)  # Name, Artillery, Shell, Charge, Distance, Azimuth, Elevation
+        self.table.setColumnCount(9)  # Name, Artillery, Shell, Charge, Distance, Azimuth, Elevation
         self.table.setHorizontalHeaderLabels(
-            ["Name", "Artillery", "Shell", "Charge", "Distance", "Azimuth", "Elevation"])
+            ["Name", "Artillery", "Shell", "Charge", "Distance", "Azimuth", "Elevation", "Deviation(1 mil)","ΔDeviation(1 mil)"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
         # Fill table with saved solutions
@@ -48,6 +48,8 @@ class SavedSolutionsWindow(QDialog):
             self.table.setItem(row, 4, QTableWidgetItem(solution.get("distance", "")))
             self.table.setItem(row, 5, QTableWidgetItem(solution.get("azimuth", "")))
             self.table.setItem(row, 6, QTableWidgetItem(solution.get("elevation", "")))
+            self.table.setItem(row, 7, QTableWidgetItem(solution.get("deviation(1 mil)", "")))
+            self.table.setItem(row, 8, QTableWidgetItem(solution.get("Δdeviation(1 mil)", "")))
             row += 1
 
     def delete_selected(self):
