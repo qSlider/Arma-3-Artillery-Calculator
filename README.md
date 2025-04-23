@@ -51,7 +51,7 @@ You may **save** and **delete** results; they are also saved if you close the pr
 6. Convert the `.svg` map to `.png` using tools such as:
    - **GIMP 2**
    - **ImageMagick**
-7. Place the `.svg` file in the `map/img` folder.  
+7. Place the `.png` file in the `map/img` folder.  
    Place the height data file in the `map/data` folder.
 
 ---
