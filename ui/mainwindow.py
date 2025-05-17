@@ -3,11 +3,11 @@ import json
 import os
 from PyQt5.QtWidgets import (QMainWindow, QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout,
                              QTextEdit, QCheckBox, QMessageBox, QInputDialog)
-from PyQt5.QtCore import Qt
 from logic.distanceLogic import calculate_distance, calculate_azimuth , calculate_mils
-from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation , mil_to_rad , calculate_range , range_difference_for_1mil
+from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation , range_difference_for_1mil
 from mapwindow import MapWindow
 from ui.MeteoSettings import SettingsWindow
+from ui.SVGSettingsWindow import SVGConverter
 from logic.balisticLogicAirFriction import find_optimal_angle, degrees_to_mil, find_high_trajectory
 from solutionwindow import SavedSolutionsWindow
 
@@ -78,6 +78,7 @@ class MainWindow(QMainWindow):
         self.settings_button = QPushButton("Meteo")
         self.settings_button.clicked.connect(self.open_meteo_settings)
 
+
         # New buttons for saved solutions
         self.save_solution_button = QPushButton("Save Solution")
         self.save_solution_button.clicked.connect(self.save_current_solution)
@@ -89,6 +90,9 @@ class MainWindow(QMainWindow):
         self.solutions_label = QLabel("Solutions:")
         self.solutions_text = QTextEdit()
         self.solutions_text.setReadOnly(True)  # Make read-only to prevent accidental editing
+
+        self.svg_settings_button = QPushButton("SVG Settings")
+        self.svg_settings_button.clicked.connect(self.open_svg_settings)
 
         self.temperature = 15.0  # default
         self.pressure = 1013.25  # default
@@ -107,6 +111,12 @@ class MainWindow(QMainWindow):
         target_position_layout = QVBoxLayout()
         buttons_layout = QHBoxLayout()
         solutions_layout = QHBoxLayout()
+
+        top_bar_layout = QHBoxLayout()
+        top_bar_layout.addStretch()
+        top_bar_layout.addWidget(self.svg_settings_button)
+
+        main_layout.insertLayout(0, top_bar_layout)
 
         artillery_layout.addWidget(self.artillery_label)
         artillery_layout.addWidget(self.artillery_combo)
@@ -138,6 +148,7 @@ class MainWindow(QMainWindow):
         buttons_layout.addWidget(self.save_solution_button)
         buttons_layout.addWidget(self.saved_solutions_button)
 
+
         solutions_layout.addWidget(self.solutions_label)
 
         main_layout.addLayout(artillery_layout)
@@ -153,6 +164,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(container)
 
         self.update_shells()
+
+    def open_svg_settings(self):
+        self.svg_window = SVGConverter()
+        self.svg_window.show()
+
 
     def get_next_solution_number(self):
         """Get the next sequential solution number for auto-naming"""
