@@ -8,13 +8,18 @@ from wand.image import Image
 
 
 def create_folders():
-    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
     folders = [
         os.path.join(base_dir, "map", "data"),
         os.path.join(base_dir, "map", "img")
     ]
     for folder in folders:
         os.makedirs(folder, exist_ok=True)
+
     return os.path.join(base_dir, "map", "img")
 
 

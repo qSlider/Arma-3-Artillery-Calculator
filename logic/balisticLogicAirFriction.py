@@ -20,6 +20,82 @@ def measure_execution_time(func):
         return result
     return wrapper
 
+
+def mil_to_degrees(mils):
+    return mils * (360 / 6400)
+
+
+@measure_execution_time
+def range_difference_for_1mil_airfriction(v0, angle_mil, temperature=15, pressure=1013, k_base=6e-05, height_diff=0):
+    """
+    Вычисляет разницу в дальности при изменении угла на 1 mil с учетом сопротивления воздуха
+
+    Параметры:
+    v0 (float): начальная скорость снаряда (м/с)
+    angle_mil (float): угол в милах
+    temperature (float): температура воздуха (°C)
+    pressure (float): атмосферное давление (гПа)
+    k_base (float): базовый коэффициент сопротивления воздуха
+    height_diff (float): разница высот между стрелком и целью (м)
+
+    Возвращает:
+    float: разница в дальности при изменении угла на 1 mil (м)
+    """
+    # Корректировка на основе атмосферных условий (как в ваших существующих функциях)
+    pressure_pa = pressure * 100
+    temperature_k = temperature + 273.15
+    R = 287.05
+    rho_calculated = pressure_pa / (R * temperature_k)
+    rho_ratio = rho_calculated / rho_standard
+    k = k_base * rho_ratio
+    v0_corrected = v0 * np.sqrt(temperature_k / 288.15)
+
+    # Конвертируем милы в градусы
+    angle_deg = mil_to_degrees(angle_mil)
+    angle_plus_1mil_deg = mil_to_degrees(angle_mil + 1)
+
+    # Находим дальность для обоих углов, используя вашу существующую функцию симуляции
+    range1 = find_max_range(v0_corrected, angle_deg, k, height_diff)
+    range2 = find_max_range(v0_corrected, angle_plus_1mil_deg, k, height_diff)
+
+    if range1 is None or range2 is None:
+        return "Недоступно"
+
+    return range2 - range1
+
+
+def find_max_range(v0, angle, k, height_diff, dt=0.01):
+    """
+    Вспомогательная функция для определения максимальной дальности полета
+    с заданными параметрами
+    """
+    angle_rad = np.radians(angle)
+    vx, vz = v0 * np.cos(angle_rad), v0 * np.sin(angle_rad)
+    x, z = 0.0, 0.0
+
+    while z >= min(0, height_diff):
+        v = np.sqrt(vx ** 2 + vz ** 2)
+        dvx_dt = -k * vx * v
+        dvz_dt = -g - k * vz * v
+        vx += dvx_dt * dt
+        vz += dvz_dt * dt
+        x += vx * dt
+        z += vz * dt
+
+        # Если достигли высоты цели при нисходящей траектории
+        if z <= height_diff and vz < 0:
+            # Линейная интерполяция для точного определения дальности
+            if z != height_diff:
+                prev_z = z - vz * dt
+                prev_x = x - vx * dt
+                if prev_z != z:  # Избегаем деления на ноль
+                    fraction = (height_diff - z) / (prev_z - z)
+                    x = x + fraction * (prev_x - x)
+            return x
+
+    # Если траектория не пересекает высоту цели
+    return None
+
 @nb.njit(fastmath=True)
 def simulate_trajectory_numba(v0, angle, k, target_distance, target_height, dt=0.01):
     angle = np.radians(angle)

@@ -3,12 +3,12 @@ import json
 import os
 from PyQt5.QtWidgets import (QMainWindow, QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout,
                              QTextEdit, QCheckBox, QMessageBox, QInputDialog)
-from logic.distanceLogic import calculate_distance, calculate_azimuth , calculate_mils
-from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation , range_difference_for_1mil
+from logic.distanceLogic import calculate_distance, calculate_azimuth, calculate_mils
+from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation, range_difference_for_1mil
 from mapwindow import MapWindow
 from ui.MeteoSettings import SettingsWindow
 from ui.SVGSettingsWindow import SVGConverter
-from logic.balisticLogicAirFriction import find_optimal_angle, degrees_to_mil, find_high_trajectory
+from logic.balisticLogicAirFriction import find_optimal_angle, degrees_to_mil, find_high_trajectory , range_difference_for_1mil_airfriction
 from solutionwindow import SavedSolutionsWindow
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -77,7 +77,6 @@ class MainWindow(QMainWindow):
 
         self.settings_button = QPushButton("Meteo")
         self.settings_button.clicked.connect(self.open_meteo_settings)
-
 
         # New buttons for saved solutions
         self.save_solution_button = QPushButton("Save Solution")
@@ -148,7 +147,6 @@ class MainWindow(QMainWindow):
         buttons_layout.addWidget(self.save_solution_button)
         buttons_layout.addWidget(self.saved_solutions_button)
 
-
         solutions_layout.addWidget(self.solutions_label)
 
         main_layout.addLayout(artillery_layout)
@@ -168,7 +166,6 @@ class MainWindow(QMainWindow):
     def open_svg_settings(self):
         self.svg_window = SVGConverter()
         self.svg_window.show()
-
 
     def get_next_solution_number(self):
         """Get the next sequential solution number for auto-naming"""
@@ -399,6 +396,7 @@ class MainWindow(QMainWindow):
 
             charge_speed = selected_charge_value
             elevation = None
+            mils_delta = None
 
             if self.air_friction_checkbox.isChecked():
                 high_arc = self.high_arc_checkbox.isChecked()
@@ -414,7 +412,18 @@ class MainWindow(QMainWindow):
                 )
                 if elevation is None:
                     raise ValueError("Не удалось найти угол с учетом сопротивления воздуха")
-                mils_delta = None
+
+                # Использование функции range_difference_for_1mil_airfriction с учетом сопротивления воздуха
+                from logic.balisticLogicAirFriction import range_difference_for_1mil_airfriction
+                mils_delta = range_difference_for_1mil_airfriction(
+                    v0=charge_speed,
+                    angle_mil=elevation,
+                    temperature=self.temperature,
+                    pressure=self.pressure,
+                    k_base=self.k_base,
+                    height_diff=h2 - h1
+                )
+                # Использование функции range_difference_for_1mil без учета фрикции
             else:
                 if self.high_arc_checkbox.isChecked():
                     elevation = calculate_high_elevation(distance, selected_charge_value, h1, h2)
@@ -423,13 +432,19 @@ class MainWindow(QMainWindow):
 
                 mils_delta = range_difference_for_1mil(selected_charge_value, elevation, h1, h2)
 
+            # Build solution text
             solution_text = (
                 f"Distance: {distance:.2f} м\n"
                 f"Azimuth: {azimuth:.2f} mil\n"
                 f"Elevation: {elevation:.2f} MIL\n"
                 f"Deviation (1 mil): {mils:.2f} м\n"
-                f"ΔDeviation in range(1 mil): {mils_delta:.2f} м"
             )
+
+            # Only add mils_delta if it's available (not None and not string error message)
+            if mils_delta is not None and not isinstance(mils_delta, str):
+                solution_text += f"ΔDeviation in range(1 mil): {mils_delta:.2f} м"
+            else:
+                solution_text += f"ΔDeviation in range(1 mil): {mils_delta if isinstance(mils_delta, str) else 'Not available'}"
 
             if self.air_friction_checkbox.isChecked():
                 solution_text += "\n(Air Friction)"
@@ -437,7 +452,7 @@ class MainWindow(QMainWindow):
             self.solutions_text.setText(solution_text)
 
             # Store solution details for saving
-            self.current_solution = {
+            solution_data = {
                 "artillery": self.artillery_combo.currentText(),
                 "shell": self.shell_combo.currentText(),
                 "charge": self.charge_combo.currentText(),
@@ -445,9 +460,10 @@ class MainWindow(QMainWindow):
                 "azimuth": f"{azimuth:.2f} mil",
                 "elevation": f"{elevation:.2f} MIL",
                 "deviation(1 mil)": f"{mils:.2f} м",
-                "Δdeviation(1 mil)": f"{mils_delta:.2f} м",
                 "with_air_friction": self.air_friction_checkbox.isChecked(),
                 "high_arc": self.high_arc_checkbox.isChecked(),
+                "temperature": f"{self.temperature}",
+                "pressure": f"{self.pressure}",
                 "artillery_position": {
                     "x": x1,
                     "y": y1,
@@ -459,6 +475,13 @@ class MainWindow(QMainWindow):
                     "h": h2
                 }
             }
+
+            # Добавление Δdeviation для обоих случаев (с трением и без)
+            if mils_delta is not None and not isinstance(mils_delta, str):
+                solution_data["Δdeviation(1 mil)"] = f"{mils_delta:.2f} м"
+            else:
+                solution_data["Δdeviation(1 mil)"] = f"{mils_delta if isinstance(mils_delta, str) else 'Not available'}"
+            self.current_solution = solution_data
 
             # Enable save button after calculation
             self.save_solution_button.setEnabled(True)

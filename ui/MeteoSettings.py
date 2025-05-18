@@ -10,10 +10,12 @@ class SettingsWindow(QDialog):
         self.temperature_input = QDoubleSpinBox()
         self.temperature_input.setSuffix(" °C")
         self.temperature_input.setRange(-50, 50)
+        self.temperature_input.setValue(15)
 
         self.pressure_input = QDoubleSpinBox()
         self.pressure_input.setSuffix(" hPa")
         self.pressure_input.setRange(800, 1100)
+        self.pressure_input.setValue(1013)
 
         self.ok_button = QPushButton("OK")
         self.ok_button.clicked.connect(self.save_settings)
