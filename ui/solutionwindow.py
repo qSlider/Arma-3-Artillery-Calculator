@@ -24,11 +24,11 @@ class SavedSolutionsWindow(QDialog):
 
         # Create table for saved solutions
         self.table = QTableWidget()
-        self.table.setColumnCount(13)
+        self.table.setColumnCount(14)
         self.table.setHorizontalHeaderLabels(
             ["Name", "Artillery", "Shell", "Charge", "Distance", "Azimuth",
              "Elevation", "Deviation(1 mil)", "ΔDeviation(1 mil)", "Hit",
-             "Air Friction", "Temperature", "Pressure"]
+             "Air Friction", "Temperature", "Pressure", "Flight Time"]
         )
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
@@ -94,6 +94,9 @@ class SavedSolutionsWindow(QDialog):
             self.table.setItem(row, 11, QTableWidgetItem(str(solution.get("temperature", ""))))
             self.table.setItem(row, 12, QTableWidgetItem(str(solution.get("pressure", ""))))
 
+            # Flight Time - column 13
+            self.table.setItem(row, 13, QTableWidgetItem(str(solution.get("flight_time", ""))))
+
             row += 1
 
     def delete_selected(self):
@@ -135,7 +138,8 @@ class SavedSolutionsWindow(QDialog):
                         row.get("Hit", ""),
                         row.get("Temperature", ""),
                         row.get("Pressure", ""),
-                        row.get("AirFriction", "")
+                        row.get("AirFriction", ""),
+                        row.get("Flight Time", "")
                     )
                     existing_records.add(key)
 
@@ -155,7 +159,6 @@ class SavedSolutionsWindow(QDialog):
                 if hit_checkbox is None:
                     continue
 
-
                 artillery = self.table.item(row, 1).text() if self.table.item(row, 1) else ""
                 shell = self.table.item(row, 2).text() if self.table.item(row, 2) else ""
                 charge = self.table.item(row, 3).text() if self.table.item(row, 3) else ""
@@ -166,18 +169,19 @@ class SavedSolutionsWindow(QDialog):
                 temperature = self.table.item(row, 11).text() if self.table.item(row, 11) else ""
                 pressure = self.table.item(row, 12).text() if self.table.item(row, 12) else ""
                 air_friction = "True" if self._is_checkbox_checked(row, 10) else "False"
+                flight_time = self.table.item(row, 13).text() if self.table.item(row, 13) else ""
 
-                # Check dublicate
+                # Check for duplicates (including flight time in the key)
                 record_key = (
                     artillery, shell, charge, distance, azimuth,
-                    elevation, hit, temperature, pressure, air_friction
+                    elevation, hit, temperature, pressure, air_friction, flight_time
                 )
 
                 if record_key in existing_records:
                     skipped += 1
                     continue
 
-                # Add CRM Table
+                # Add record to CSV
                 record = {
                     "Artillery": artillery,
                     "Shell": shell,
@@ -188,7 +192,8 @@ class SavedSolutionsWindow(QDialog):
                     "Hit": hit,
                     "Temperature": temperature,
                     "Pressure": pressure,
-                    "AirFriction": air_friction
+                    "AirFriction": air_friction,
+                    "Flight Time": flight_time
                 }
 
                 writer.writerow(record)

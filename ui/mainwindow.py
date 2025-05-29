@@ -4,11 +4,13 @@ import os
 from PyQt5.QtWidgets import (QMainWindow, QComboBox, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget, QHBoxLayout,
                              QTextEdit, QCheckBox, QMessageBox, QInputDialog)
 from logic.distanceLogic import calculate_distance, calculate_azimuth, calculate_mils
-from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation, range_difference_for_1mil
+from logic.balisticLogic import calculate_elevation_with_height, calculate_high_elevation, range_difference_for_1mil, \
+    calculate_flight_time, mil_to_rad
 from mapwindow import MapWindow
 from ui.MeteoSettings import SettingsWindow
 from ui.SVGSettingsWindow import SVGConverter
-from logic.balisticLogicAirFriction import find_optimal_angle, degrees_to_mil, find_high_trajectory , range_difference_for_1mil_airfriction
+from logic.balisticLogicAirFriction import find_optimal_angle, degrees_to_mil, find_high_trajectory, \
+    range_difference_for_1mil_airfriction, calculate_flight_time as calculate_flight_time_air, mil_to_degrees
 from solutionwindow import SavedSolutionsWindow
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -397,6 +399,7 @@ class MainWindow(QMainWindow):
             charge_speed = selected_charge_value
             elevation = None
             mils_delta = None
+            flight_time = None
 
             if self.air_friction_checkbox.isChecked():
                 high_arc = self.high_arc_checkbox.isChecked()
@@ -413,8 +416,27 @@ class MainWindow(QMainWindow):
                 if elevation is None:
                     raise ValueError("Не удалось найти угол с учетом сопротивления воздуха")
 
-                # Использование функции range_difference_for_1mil_airfriction с учетом сопротивления воздуха
-                from logic.balisticLogicAirFriction import range_difference_for_1mil_airfriction
+                # Calculate flight time with air friction
+                # Convert elevation from mils to degrees
+                elevation_degrees = mil_to_degrees(elevation)
+
+                # Get atmospheric corrected parameters
+                pressure_pa = self.pressure * 100
+                temperature_k = self.temperature + 273.15
+                R = 287.05
+                rho_calculated = pressure_pa / (R * temperature_k)
+                rho_ratio = rho_calculated / 1.225  # rho_standard
+                k = self.k_base * rho_ratio
+                v0_corrected = charge_speed * (temperature_k / 288.15) ** 0.5
+
+                flight_time = calculate_flight_time_air(
+                    v0=v0_corrected,
+                    angle_deg=elevation_degrees,
+                    k=k,
+                    height_diff=h2 - h1
+                )
+
+                # Use air friction range difference function
                 mils_delta = range_difference_for_1mil_airfriction(
                     v0=charge_speed,
                     angle_mil=elevation,
@@ -423,12 +445,20 @@ class MainWindow(QMainWindow):
                     k_base=self.k_base,
                     height_diff=h2 - h1
                 )
-                # Использование функции range_difference_for_1mil без учета фрикции
             else:
                 if self.high_arc_checkbox.isChecked():
                     elevation = calculate_high_elevation(distance, selected_charge_value, h1, h2)
                 else:
                     elevation = calculate_elevation_with_height(distance, selected_charge_value, h1, h2)
+
+                # Calculate flight time without air friction
+                elevation_rad = mil_to_rad(elevation)
+                flight_time = calculate_flight_time(
+                    v=selected_charge_value,
+                    theta_rad=elevation_rad,
+                    h_s=h1,
+                    h_t=h2
+                )
 
                 mils_delta = range_difference_for_1mil(selected_charge_value, elevation, h1, h2)
 
@@ -439,6 +469,12 @@ class MainWindow(QMainWindow):
                 f"Elevation: {elevation:.2f} MIL\n"
                 f"Deviation (1 mil): {mils:.2f} м\n"
             )
+
+            # Add flight time to solution text
+            if flight_time is not None and not isinstance(flight_time, str):
+                solution_text += f"Flight Time: {flight_time:.2f} с\n"
+            else:
+                solution_text += f"Flight Time: {flight_time if isinstance(flight_time, str) else 'Not available'}\n"
 
             # Only add mils_delta if it's available (not None and not string error message)
             if mils_delta is not None and not isinstance(mils_delta, str):
@@ -476,11 +512,18 @@ class MainWindow(QMainWindow):
                 }
             }
 
-            # Добавление Δdeviation для обоих случаев (с трением и без)
+            # Add flight time to solution data
+            if flight_time is not None and not isinstance(flight_time, str):
+                solution_data["flight_time"] = f"{flight_time:.2f} с"
+            else:
+                solution_data["flight_time"] = f"{flight_time if isinstance(flight_time, str) else 'Not available'}"
+
+            # Add delta deviation for both cases (with and without friction)
             if mils_delta is not None and not isinstance(mils_delta, str):
                 solution_data["Δdeviation(1 mil)"] = f"{mils_delta:.2f} м"
             else:
                 solution_data["Δdeviation(1 mil)"] = f"{mils_delta if isinstance(mils_delta, str) else 'Not available'}"
+
             self.current_solution = solution_data
 
             # Enable save button after calculation

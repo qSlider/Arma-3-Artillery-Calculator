@@ -120,7 +120,7 @@
             "name": "D-30",
             "type": "towed",
             "caliber": 122,
-            "k_base": 1.2,
+            "k_base": -6e-05,
             "compatibleShells": [
                 {
                     "name": "53-OF-462",

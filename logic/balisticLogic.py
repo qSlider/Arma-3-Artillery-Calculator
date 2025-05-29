@@ -83,10 +83,29 @@ def range_difference_for_1mil(v, theta_mil, h_s=0, h_t=0, g=9.79):
 
     return r2 - r1
 
+def calculate_flight_time(v, theta_rad, h_s=0, h_t=0, g=9.79):
+    """
+    v - начальная скорость (м/с)
+    theta_rad - угол в радианах
+    h_s - высота стрелка (м)
+    h_t - высота цели (м)
+    g - ускорение свободного падения (м/с²)
+    Возвращает время полета в секундах
+    """
+    vx = v * math.cos(theta_rad)
+    vy = v * math.sin(theta_rad)
+    delta_h = h_t - h_s
 
+    discriminant = 2 * vy + 2 * g * delta_h
+    if discriminant < 0:
+        return "Цель недостижима (по высоте)"
+
+    t = (vy + math.sqrt(discriminant)) / g
+    return t
 
 print(calculate_elevation_with_height(1900, 167.7, 0, 0))
 print(calculate_high_elevation(4000, 226.6, 0, 100))
 theta_mil = 240
 v = 200
 print(f"Δдальность на 1 mil при {theta_mil} mil:", range_difference_for_1mil(v, theta_mil, 0, 0))
+print (f"Время полета :" , calculate_flight_time(v, theta_mil, 0, 0))

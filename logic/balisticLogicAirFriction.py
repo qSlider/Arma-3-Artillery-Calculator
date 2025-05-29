@@ -207,3 +207,33 @@ def find_high_trajectory(v0, distance, height_diff, temperature, pressure, k_bas
 
     return best_angle
 
+@measure_execution_time
+def calculate_flight_time(v0, angle_deg, k, height_diff, dt=0.01):
+    angle_rad = np.radians(angle_deg)
+    vx = v0 * np.cos(angle_rad)
+    vz = v0 * np.sin(angle_rad)
+    x, z = 0.0, 0.0
+    t = 0.0
+
+    while z >= min(0, height_diff):
+        v = np.sqrt(vx ** 2 + vz ** 2)
+        dvx_dt = -k * vx * v
+        dvz_dt = -g - k * vz * v
+        vx += dvx_dt * dt
+        vz += dvz_dt * dt
+        x += vx * dt
+        z += vz * dt
+        t += dt
+
+        if z <= height_diff and vz < 0:
+            if z != height_diff:
+                prev_z = z - vz * dt
+                prev_t = t - dt
+                if prev_z != z:
+                    fraction = (height_diff - z) / (prev_z - z)
+                    t = t + fraction * (-dt)
+            return t
+
+    return t
+
+

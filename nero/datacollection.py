@@ -22,18 +22,19 @@ FIELDS = [
     "Hit",
     "Temperature",
     "Pressure",
-    "AirFriction"
+    "AirFriction",
+    "Flight Time"
 ]
 
 
 def create_csv_if_not_exists():
     if not os.path.exists(FILENAME):
         with open(FILENAME, mode='w', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=FIELDS , delimiter=';')
+            writer = csv.DictWriter(file, fieldnames=FIELDS, delimiter=';')
             writer.writeheader()
         print(f"[INFO] Файл {FILENAME} создан.")
 
-def log_fire_data(temperature, pressure, air_friction):
+def log_fire_data(temperature, pressure, air_friction, flight_time=""):
     print("\nВведите данные стрельбы:")
 
     entry = {
@@ -46,7 +47,8 @@ def log_fire_data(temperature, pressure, air_friction):
         "Hit": input("Попадание? (True/False): ").capitalize(),
         "Temperature": temperature,
         "Pressure": pressure,
-        "AirFriction": air_friction
+        "AirFriction": air_friction,
+        "Flight Time": flight_time if flight_time else input("Время полета (в секундах): ")
     }
 
     if entry["Hit"] not in ["True", "False"]:
@@ -63,7 +65,7 @@ def log_fire_data(temperature, pressure, air_friction):
 if __name__ == "__main__":
     create_csv_if_not_exists()
     while True:
-        log_fire_data()
+        log_fire_data("", "", "")
         again = input("Добавить еще одну запись? (y/n): ").lower()
         if again != 'y':
             break
